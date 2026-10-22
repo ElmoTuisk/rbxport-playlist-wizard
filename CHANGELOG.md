@@ -19,5 +19,5 @@
 - Add bounded, reproducible joint selection/sequencing with tempo/key constraints, metadata coverage and explicit uncertainty.
 - Add optional full local audio decoding and a versioned, gain-resistant experimental intensity cache. No downloads or source-file rewrites.
 - Add desktop/USB source adapters and guarded fresh-playlist creation with native order readback, durable partial-write recovery and blocked blind recreation after uncertain creation.
-- Add isolated fixtures, synthetic audio checks and parent CI coverage. Live sidebar/library connection was subsequently verified on Windows/rbxport 1.9.0 during authorized installation; playlist creation, USB behavior and listening quality remain unverified. No public release has been performed.
+- Add isolated fixtures, synthetic audio checks and parent CI coverage. Live sidebar/library connection was subsequently verified on Windows/rbxport 1.9.0 during authorized installation; playlist creation, USB behavior and listening quality remain unverified. Public release evidence is recorded in the validation document.
 - Populate sources automatically when the launcher opens the popup, without scanning/analyzing tracks or writing playlists. Add a fixture regression for this first-open behavior.

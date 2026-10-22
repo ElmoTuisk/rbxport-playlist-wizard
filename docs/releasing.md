@@ -12,4 +12,4 @@ The independent `.github/workflows/test.yml` tests on both platforms, installs F
 
 Retain `LICENSE`, `LICENSE-AGPL-3.0.txt` and `THIRD_PARTY.md`. For any redistributed Essentia runtime, provide the complete corresponding upstream source/build requirements as well as Wizard source; the source setup ZIP deliberately excludes compiled runtime artifacts. See the pinned source revision and dependency hashes in the notices/manifest.
 
-No Wizard repository or public release has been created by this implementation task.
+Public source is maintained at https://github.com/ElmoTuisk/rbxport-playlist-wizard. See docs/validation.md for verified CI and release publication evidence.
