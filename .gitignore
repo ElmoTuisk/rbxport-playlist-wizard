@@ -1,0 +1,15 @@
+.local-data/
+.runtime/
+.tools/
+.install-cache/
+node_modules/
+test-results/
+installed.json
+launch-url.txt
+service.pid
+*.sqlite*
+*.dpapi
+*.log
+*.zip
+cookies*.txt
+LOCAL_WORKSPACE.md

@@ -1,0 +1,17 @@
+// Existing rbxport commands only. No direct music-database access.
+export function hostCommandSource(method,args) {
+  const methods={
+    identity: `return {libraryId};`,
+    info: `return {libraryId,playlists:(await invoke('playlist_tree')).filter(p=>p.kind==='playlist')};`,
+    devices: `const devices=await invoke('list_devices');const result=[];for(const d of devices){if(!d.volumeId)continue;result.push({...d,libraries:await invoke('device_libraries',{path:d.path})});}return result;`,
+    open: `const source=a.device?{kind:'device',path:device.path,format:a.device.format,playlist:a.playlistId||'0'}:a.playlistId?{kind:'playlist',id:a.playlistId}:{kind:'collection'};const view=await invoke('open_view',{spec:{source,sort:'trackNo',descending:false,query:''}});return {...view,libraryId};`,
+    page: `const rows=await invoke('fetch_rows',{viewId:a.viewId,offset:a.offset,len:a.count,extraColumns:['location']});return rows.map(r=>({id:r.id,title:r.title,artist:r.artist,genre:r.genre,duration:r.durationSec,bpm:r.bpmX100>0?r.bpmX100/100:null,key:r.key||'',path:String(r.extra?.location||''),missing:Boolean(r.missing)}));`,
+    create: `if(a.device)return (await invoke('device_playlist_edit',{path:device.path,format:a.device.format,edit:{kind:'create',parent:'0',name:a.name,folder:false}})).id;const before=await invoke('playlist_tree');await invoke('create_playlist',{name:a.name,parent:'root'});const after=await invoke('playlist_tree');const fresh=after.filter(p=>p.kind==='playlist'&&!before.some(b=>b.id===p.id));if(fresh.length!==1)throw Error('Playlist creation outcome is uncertain; inspect it before trying again');return fresh[0].id;`,
+    add: `if(a.device)return invoke('device_playlist_edit',{path:device.path,format:a.device.format,edit:{kind:'add',playlist:a.playlistId,tracks:a.ids,duplicates:false}});return invoke('add_tracks_to_playlist',{playlist:a.playlistId,tracks:a.ids,allowDuplicates:false});`
+  };
+  if(!Object.hasOwn(methods,method))throw Error('Unsupported Playlist Wizard host operation');
+  if(['create','add'].includes(method)&&!args.libraryId)throw Error('Writes require a pinned library identity');
+  if(args.device&&(!args.device.volumeId||!args.device.path||!['deviceLibrary','oneLibrary'].includes(args.device.format)))throw Error('Invalid pinned USB identity');
+  const write=['create','add'].includes(method);
+  return `(async()=>{const a=${JSON.stringify(args)};const invoke=window.__TAURI_INTERNALS__.invoke;let drives;try{drives=await invoke('database_drives');}catch{throw Error('This rbxport build lacks the required library API (tested source contract: 1.9.0).');}const active=drives.find(d=>d.current);if(!active?.masterDb)throw Error('Cannot establish current library identity');const libraryId=active.masterDb.replaceAll('\\\\','/').toLowerCase();if(a.libraryId&&a.libraryId!==libraryId)throw Error('Wrong library; operation refused');let device;if(a.device){const devices=await invoke('list_devices');device=devices.find(d=>d.volumeId===a.device.volumeId&&d.path===a.device.path);if(!device)throw Error('USB disconnected or identity changed');const libraries=await invoke('device_libraries',{path:device.path});if(!libraries.some(l=>l.format===a.device.format))throw Error('USB library format is no longer available');}const leaseKey='__rbxportAddonWriteLease';if(${write}){if(window[leaseKey])throw Error('Another add-on is writing; wait and retry');window[leaseKey]={owner:'playlist-wizard'};}try{return await(async()=>{${methods[method]}})();}finally{if(${write})delete window[leaseKey];}})()`;
+}

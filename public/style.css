@@ -1,0 +1,24 @@
+/* The compact spacing, neutral dark palette and sidebar layout follow Playlist Sync. */
+#playlist-wizard-root{font:12px/1.45 'Segoe UI',sans-serif;color:#dedfe1;background:#1c1d1f;max-width:460px;margin:0 auto;padding:15px;text-align:left;overflow-wrap:anywhere;color-scheme:dark}
+#playlist-wizard-root *{box-sizing:border-box}body:has(>#playlist-wizard-root){margin:0;background:#1c1d1f}
+#playlist-wizard-root button,#playlist-wizard-root input,#playlist-wizard-root select{font:inherit;color:inherit;max-width:100%}
+#playlist-wizard-root button{background:#2b2d30;border:1px solid #3c3f42;border-radius:4px;padding:5px 10px;cursor:pointer}
+#playlist-wizard-root button:hover{background:#36393d}#playlist-wizard-root button:disabled{opacity:.45;cursor:default}
+#playlist-wizard-root button:focus-visible,#playlist-wizard-root input:focus-visible,#playlist-wizard-root select:focus-visible,#playlist-wizard-button:focus-visible{outline:2px solid #a8c9b1;outline-offset:2px}
+#playlist-wizard-root .pw-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;position:sticky;top:0;z-index:1;background:#1c1d1f;padding-bottom:5px}
+#playlist-wizard-root .pw-head button{background:none;border-color:transparent;padding:1px 6px;font-size:18px}
+#playlist-wizard-root p{margin:6px 0 10px}#playlist-wizard-root label{display:block;margin:9px 0;color:#b4b8be}
+#playlist-wizard-root input:not([type=checkbox]),#playlist-wizard-root select{display:block;width:100%;padding:6px 7px;margin-top:4px;background:#17181a;border:1px solid #3c3f42;border-radius:3px}
+#playlist-wizard-root .pw-check{display:flex;align-items:center;gap:7px}#playlist-wizard-root input[type=checkbox]{accent-color:#99ad9d;flex-shrink:0}
+#playlist-wizard-root fieldset{border:0;padding:0;margin:0;min-width:0}#playlist-wizard-root .pw-muted,#playlist-wizard-root small{font-size:11px;color:#a8adb3}
+#playlist-wizard-root .pw-error{background:#332c26;color:#e0b990;padding:8px;border-radius:4px}#playlist-wizard-root .pw-more{margin:12px 0;font-size:11px}
+#playlist-wizard-root summary{cursor:pointer}#playlist-wizard-root .pw-actions,#playlist-wizard-root .pw-track-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:9px}
+#playlist-wizard-root .pw-sources{max-height:160px;overflow:auto}#playlist-wizard-root .pw-draft{margin-top:14px;padding-top:12px;border-top:1px solid #3c3f42}
+#playlist-wizard-root .pw-tracks{padding-left:24px}#playlist-wizard-root .pw-tracks li{padding:10px 0;border-top:1px solid #303236}
+#playlist-wizard-root .pw-tracks span,#playlist-wizard-root .pw-tracks small{display:block}#playlist-wizard-root .pw-track-actions label{display:flex;align-items:center;gap:6px;margin:0}#playlist-wizard-root .pw-track-actions input{width:80px;margin:0}
+#playlist-wizard-root .pw-anchors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}#playlist-wizard-root .pw-foot{border-top:1px solid #303236;padding-top:12px;margin-top:14px;color:#969ba1;font-size:11px}
+#playlist-wizard-root .pw-curve{width:100%;display:block}#playlist-wizard-root .pw-curve text{fill:#b4b8be;font-size:15px}#playlist-wizard-root .pw-axis{fill:none;stroke:#55595e}#playlist-wizard-root .pw-target{fill:none;stroke:#a8adb3;stroke-width:2;stroke-dasharray:5 5}#playlist-wizard-root .pw-achieved{fill:none;stroke:#a8c9b1;stroke-width:2.5}
+#playlist-wizard-popover{position:fixed;z-index:2147483001;width:410px;box-sizing:border-box;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow-x:hidden;overflow-y:auto;background:#1c1d1f;border:1px solid #45484d;border-radius:6px;box-shadow:0 8px 28px #0008;user-select:text;overscroll-behavior:contain;scrollbar-width:thin}
+#playlist-wizard-popover[hidden]{display:none!important}#playlist-wizard-button{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;padding:6px 2px;margin:0;border:0;border-radius:0;background:none;color:var(--c-icon-off,#a4a8ae);font:inherit;cursor:pointer;-webkit-app-region:no-drag}
+#playlist-wizard-button>span:first-child{font-size:18px;line-height:18px;width:18px;height:18px}#playlist-wizard-button>span:last-child{font-size:var(--f-size-xs,10px);line-height:1.1;text-align:center;max-width:100%;overflow-wrap:anywhere}
+#playlist-wizard-button:hover{color:var(--c-icon-on,#e2e5e9);background:var(--c-raised,#ffffff0c)}
