@@ -1,6 +1,8 @@
 # Playlist Wizard for rbxport
 
-An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental version 0.1.2 · Windows x64 · Node.js 24.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
+An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental development version 0.1.2 (unreleased) · Windows x64 · Node.js 24.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
+
+**Startup fix pending:** Smart App Control can block the unsigned helper used by [v0.1.1](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases/tag/v0.1.1), now marked as a pre-release. Windows/Linux CI passed, but a compatible startup correction has not been released. Keep Windows protection enabled.
 
 ## What works in this development build
 

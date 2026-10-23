@@ -1,5 +1,12 @@
 # Validation record
 
+## Current Smart App Control blocker
+
+After the latest manual check, the user confirmed Smart App Control blocked the unsigned helper EXE. This remains unresolved; successful Windows/Linux CI is not evidence of compatibility with that policy. Sync v0.11.4 and Wizard v0.1.1 are marked as pre-releases with a prominent warning; their assets and immutable tags were not changed. Versions 0.11.5 and 0.1.2 on main remain unreleased.
+
+On the user's installation, the two verified original rbxport shortcut backups were restored to launch the host directly. Add-on data and registration backups were retained; automatic attachment is unfinished. No Windows security setting was changed. A possible signed-Windows-host approach passed an isolated fixture, but deployment was rejected by automatic approval review as potentially bypassing the intended application-control boundary. Explicit informed user approval is pending; that proposed approach has not been deployed or published. No usable local signing certificate was found. The final startup fix and release verification remain outstanding.
+
+
 ## Closing during startup — follow-up correction
 
 The user's final Desktop check opened rbxport before its add-ons appeared; closing it and clicking again left startup queued. The captured process state showed an add-on readiness launcher still waiting after that host had exited. This was not covered by the successful 0.11.4/0.1.1 CI; earlier visibility checks did not establish this close/reopen case.
