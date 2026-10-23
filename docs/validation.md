@@ -1,5 +1,12 @@
 # Validation record
 
+## Closing during startup — follow-up correction
+
+The user's final Desktop check opened rbxport before its add-ons appeared; closing it and clicking again left startup queued. The captured process state showed an add-on readiness launcher still waiting after that host had exited. This was not covered by the successful 0.11.4/0.1.1 CI; earlier visibility checks did not establish this close/reopen case.
+
+Sync 0.11.5 / Wizard 0.1.2 dispatch both launchers concurrently, watch the exact host PID while waiting, cancel only their own short launcher children on host close and release the mutex promptly. Repeated-click waiting is bounded to five seconds; abandoned mutex ownership is recovered. Services retain their existing exact-host lifetime watchers and all music/library guards. Native status distinguishes a normal close from readiness/failure. Synthetic fixtures require Wizard to start while Sync is waiting and cancel two sleeping launchers on synthetic host exit. Final native execution on the local machine remains subject to the documented Code Integrity policy blocks; CI and manual evidence are recorded separately when obtained.
+
+
 ## Shortcut launch correction — 23 October 2026
 
 The previous programmatic Explorer/ShellExecute checks did not establish that ordinary user clicks worked. The user subsequently confirmed that the 0.11.3/0.1.0 shortcuts did nothing. Fresh PowerShell-target shortcut files also failed. A console-free native shortcut target opened the app, but add-on launch still failed until its PowerShell children also used explicit console-free process creation. After that change, authenticated services connected to the same host PID and the user confirmed both sidebar entries were present. These checks used temporary automatic-sync pause; saved scheduling preferences were not changed.

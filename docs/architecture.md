@@ -1,5 +1,7 @@
 # Playlist Wizard architecture
 
+Version 0.1.2 uses the Sync 0.11.5 helper: dispatch both add-ons concurrently, poll exact-host lifetime during readiness, cancel pending short launcher processes on host exit and release the startup mutex. Repeated-click waits are bounded and normal close has a separate native Closed status.
+
 Version 0.1.1 uses the identical public `RbxportLauncher.cs` and PowerShell helpers shipped by Sync 0.11.4. Configuration compiles a console-free Windows shortcut target with the installed .NET Framework compiler, caching source/output SHA-256 hashes. Both native-to-helper and helper-to-add-on dispatch use `UseShellExecute=false` and `CreateNoWindow=true`. Wizard background startup confirms its sidebar button before returning. The shared native launcher records local status/errors and displays startup failures; it waits for launcher processes, not persistent descendants. Source remains in the ZIP; compiled runtime binaries do not. The generated launcher is unsigned and subject to Windows application-control policy.
 
 Playlist Wizard is independently runnable and installable. Runtime imports stay inside this directory. It never opens Playlist Sync state, starts sync jobs or calls acquisition providers. Both add-ons can connect to the same opt-in host automation port using distinct CDP bindings, sidebar IDs and globals.

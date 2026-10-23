@@ -79,7 +79,7 @@ foreach ($item in $include) {
 }
 & (Join-Path $runtime 'node.exe') (Join-Path $InstallDirectory 'scripts\Install-Essentia.mjs') --directory (Join-Path $runtime 'essentia') --archive (Join-Path $CacheDirectory 'essentia.js-0.1.3.tgz')
 if ($LASTEXITCODE -ne 0) { throw 'Essentia setup did not complete. Check the verified cache or internet access and run setup again.' }
-@{dataDirectory=$DataDirectory;version='0.1.1'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $InstallDirectory 'installed.json') -Encoding UTF8
+@{dataDirectory=$DataDirectory;version='0.1.2'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $InstallDirectory 'installed.json') -Encoding UTF8
 if (-not $NoShortcuts -and -not $StartWithRbxport) {
     $shell = New-Object -ComObject WScript.Shell
     $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Playlist Wizard'
@@ -98,7 +98,7 @@ if (-not $NoShortcuts -and -not $StartWithRbxport) {
     $stop.WindowStyle = 7
     $stop.Save()
 }
-Write-Output 'Playlist Wizard 0.1.1 installed separately. Playlist Sync settings and music were not changed.'
+Write-Output 'Playlist Wizard 0.1.2 installed separately. Playlist Sync settings and music were not changed.'
 if ($StartWithRbxport -and -not $NoShortcuts) { & (Join-Path $InstallDirectory 'Configure-Rbxport-Startup.ps1') -NoStart }
 if (-not $NoLaunch) {
     if($StartWithRbxport -and -not $NoShortcuts) { Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'rbxport-addons\Start-Rbxport.exe') }

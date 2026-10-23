@@ -45,6 +45,10 @@ internal static class RbxportLauncher {
                 if (!child.WaitForExit(180000)) throw new TimeoutException("rbxport startup has not finished. Check its window and try again after the current launch ends.");
                 // Drain short final errors, but never wait indefinitely for an inherited pipe.
                 drained.Wait(1000);
+                if (child.ExitCode == 3) {
+                    File.WriteAllText(status, "Closed " + DateTime.UtcNow.ToString("O"));
+                    return 0;
+                }
                 if (child.ExitCode != 0) {
                     lock (output) File.WriteAllText(Path.Combine(root, "launch-error.log"), output.ToString());
                     throw new IOException("rbxport or an enabled add-on could not start. Details are saved in " + Path.Combine(root, "launch-error.log"));

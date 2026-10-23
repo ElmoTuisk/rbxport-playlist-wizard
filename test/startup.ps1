@@ -75,14 +75,20 @@ try {
     Set-RbxportAddonStartup -Root $syncRoot @options
     Set-RbxportAddonStartup -Root $wizardRoot @options
     $global:fixtureHostRunning=$false;$global:fixtureHostStarts=0
-    $dispatch=Join-Path $fixtureRoot 'dispatch.txt'
+    $dispatchFiles=@((Join-Path $fixtureRoot 'dispatch-Playlist Sync.txt'),(Join-Path $fixtureRoot 'dispatch-Playlist Wizard.txt'))
+    function Get-FixtureDispatchCount { return @(Get-Content -LiteralPath $dispatchFiles -ErrorAction SilentlyContinue).Count }
     foreach($root in @($syncRoot,$wizardRoot)) {
         @'
 param([switch]$Background,[switch]$NoWindow,[switch]$PauseAutomatic,[string]$RbxportPath)
 if(-not $Background -or -not $NoWindow -or -not $PauseAutomatic -or -not(Test-Path -LiteralPath $RbxportPath)) { exit 7 }
 Add-Type 'using System; using System.Runtime.InteropServices; public class FixtureConsole { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'
 if([FixtureConsole]::GetConsoleWindow() -ne [IntPtr]::Zero) { exit 8 }
-Add-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'dispatch.txt') -Value (Split-Path $PSScriptRoot -Leaf)
+$parent=Split-Path $PSScriptRoot -Parent
+if((Split-Path $PSScriptRoot -Leaf) -eq 'Playlist Sync') {
+    for($attempt=0;$attempt -lt 100 -and -not(Test-Path (Join-Path $parent 'dispatch-Playlist Wizard.txt'));$attempt++) { Start-Sleep -Milliseconds 50 }
+    if(-not(Test-Path (Join-Path $parent 'dispatch-Playlist Wizard.txt'))) { exit 12 }
+}
+Add-Content -LiteralPath (Join-Path $parent ('dispatch-'+(Split-Path $PSScriptRoot -Leaf)+'.txt')) -Value 'started'
 '@ | Set-Content -LiteralPath (Join-Path $root ('Start-'+(Split-Path $root -Leaf).Replace(' ','-')+'.ps1'))
     }
     function Get-Process { if($global:fixtureHostRunning) { return @{Id=54321;Path=$options.RbxportPath} } }
@@ -93,10 +99,17 @@ Add-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'dispatch
     }
     & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic
     & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic
-    Assert-Startup ($global:fixtureHostStarts -eq 1 -and @(Get-Content -LiteralPath $dispatch).Count -eq 4) 'Repeated shortcuts reuse one host and dispatch both console-free companions'
+    Assert-Startup ($global:fixtureHostStarts -eq 1 -and (Get-FixtureDispatchCount) -eq 4) 'Both companions start concurrently and repeated shortcuts reuse one host'
     Set-Content -LiteralPath (Join-Path $syncRoot 'Start-Playlist-Sync.ps1') -Value 'exit 9'
     & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic 2>$null
-    Assert-Startup ($LASTEXITCODE -eq 1 -and @(Get-Content -LiteralPath $dispatch).Count -eq 5) 'Failed Sync is reported after Wizard still starts'
+    Assert-Startup ($LASTEXITCODE -eq 1 -and (Get-FixtureDispatchCount) -eq 5) 'Failed Sync is reported after Wizard still starts'
+    foreach($root in @($syncRoot,$wizardRoot)) { Set-Content -LiteralPath (Join-Path $root ('Start-'+(Split-Path $root -Leaf).Replace(' ','-')+'.ps1')) -Value 'Start-Sleep -Seconds 30' }
+    $global:fixtureHostChecks=0
+    function Get-Process { $global:fixtureHostChecks++;if($global:fixtureHostChecks -le 3) { return @{Id=54321;Path=$options.RbxportPath} } }
+    $elapsed=[Diagnostics.Stopwatch]::StartNew()
+    & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic
+    Assert-Startup ($LASTEXITCODE -eq 3 -and $elapsed.Elapsed.TotalSeconds -lt 10) 'Closing the owning host cancels pending launchers promptly without queued relaunch'
+    function Get-Process { if($global:fixtureHostRunning) { return @{Id=54321;Path=$options.RbxportPath} } }
     $package=(Get-Content -LiteralPath (Join-Path $sourceRoot 'package.json') -Raw | ConvertFrom-Json).name
     $title=if($package -eq 'rbxport-playlist-sync-addon') { 'Sync' } else { 'Wizard' }
     $runtimeRoot=Join-Path $fixtureRoot 'Runtime fixture'
@@ -136,14 +149,18 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'native-marker.txt') 'console-
     $native=New-Object Diagnostics.ProcessStartInfo
     $native.FileName=$ordinary;$native.UseShellExecute=$true
     $process=[Diagnostics.Process]::Start($native)
-    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 0) 'Actual generated shortcut dispatches native launcher successfully' } finally { $process.Dispose() }
+    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 0) 'Actual generated shortcut dispatches native launcher successfully' } finally { if(-not $process.HasExited) { $process.Kill() }; $process.Dispose() }
     Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'native-marker.txt')) -eq 'console-free') 'Native launcher passes diagnostic flags without allocating a console'
     Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-status.txt') -Raw).StartsWith('Ready ')) 'Ready is reported after helper success'
     Set-Content -LiteralPath (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -Value "Write-Error 'synthetic-startup-failure'; exit 9"
     $process=[Diagnostics.Process]::Start($native)
-    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 1) 'Native launcher returns failure instead of silent success' } finally { $process.Dispose() }
+    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 1) 'Native launcher returns failure instead of silent success' } finally { if(-not $process.HasExited) { $process.Kill() }; $process.Dispose() }
     Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-status.txt') -Raw).StartsWith('Failed ')) 'Failure status is retained locally'
     Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-error.log') -Raw).Contains('synthetic-startup-failure')) 'Error details are captured for diagnosis'
+    Set-Content -LiteralPath (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -Value 'exit 3'
+    $process=[Diagnostics.Process]::Start($native)
+    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 0) 'Normal close during startup does not display a failure' } finally { if(-not $process.HasExited) { $process.Kill() }; $process.Dispose() }
+    Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-status.txt') -Raw).StartsWith('Closed ')) 'Cancelled startup is distinguished from ready'
 } finally {
     $resolved=[IO.Path]::GetFullPath($fixtureRoot)
     $tempPrefix=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'

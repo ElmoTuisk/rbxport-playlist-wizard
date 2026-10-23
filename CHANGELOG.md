@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 — 2026-10-23
+
+- Start enabled add-ons concurrently through the shared launcher. Closing the owning rbxport session during startup cancels its pending launchers promptly, releases the launch lock and prevents later clicks from queuing a surprise reopen.
+- Bound repeated-click waiting, recover an abandoned launch mutex, and distinguish a normal close from a startup failure. Extend synthetic concurrency/cancellation and native status checks. Saved data and companion independence are preserved.
+
 ## 0.1.1 — 2026-10-23
 
 - Accept Explorer link-tracking metadata refreshes when every saved shortcut property is unchanged, so normal launches cannot break subsequent updates or original-shortcut restoration.
