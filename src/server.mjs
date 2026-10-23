@@ -4,16 +4,20 @@ import { access,mkdir,readFile,writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join,resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { Installation } from './installation.mjs';
 import { Store } from './store.mjs';
 import { Bridge } from './bridge.mjs';
 import { Wizard } from './wizard.mjs';
 import {essentiaStatus} from './essentia-runtime.mjs';
 import {watchHostProcess} from './host-lifetime.mjs';
 const publicDir=fileURLToPath(new URL('../public/',import.meta.url));
-export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-playlist-wizard'),bridgeClient=null,demo=false,wizardOptions={},hostPid=null,watchHost=watchHostProcess}={}) {
+export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-playlist-wizard'),bridgeClient=null,demo=false,wizardOptions={},hostPid=null,watchHost=watchHostProcess,installationClient=null}={}) {
   if(hostPid!==null&&(!Number.isSafeInteger(hostPid)||hostPid<=0))throw Error('Invalid rbxport process ID');
   let stopHostWatch=null;
   await mkdir(dataDir,{recursive:true});const token=randomBytes(32).toString('hex'),store=new Store(join(dataDir,demo?'wizard-demo.sqlite':'wizard.sqlite'));
+  let uninstalling=false;
+  const installation=installationClient||new Installation();
+  const installationStatus=demo?{canUninstall:false}:await installation.status();
   let revision=1,closing=false,hostTask=null,timer=null,connected=false,connectionError='',closeTask=null;const listeners=new Set();
   const changed=()=>{revision++;for(const listener of [...listeners])listener();clearTimeout(timer);if(!closing&&!demo)timer=setTimeout(()=>{void syncHost().catch(()=>{});},200);};
   const bridge=bridgeClient||(demo?demoBridge():new Bridge(changed));
@@ -22,7 +26,7 @@ export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-p
   const wizard=new Wizard(store,bridge,{ffmpeg,changed,...wizardOptions,...(demo?{fileStat:async()=>({isFile:()=>true,size:100,mtimeMs:0,dev:0,ino:0})}:{})});
   const css=await readFile(join(publicDir,'style.css'),'utf8');
   const analysis={essentia:await essentiaStatus()};
-  const model=()=>({revision,connected,connectionError,demo,hostPid,analysis,expiresAt:Date.now()+60000,wizard:wizard.publicState()});
+  const model=()=>({revision,connected,connectionError,demo,hostPid,analysis,installation:installationStatus,expiresAt:Date.now()+60000,wizard:wizard.publicState()});
   function syncHost(open=false) {
     if(closing)return Promise.resolve();
     if(demo){connected=true;return Promise.resolve({ready:true,libraryReady:true});}
@@ -36,8 +40,16 @@ export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-p
     })().finally(()=>{hostTask=null;});return hostTask;
   }
   async function action(name,args={}) {
-    if(closing)throw Error('Playlist Wizard is closing with rbxport');
+    if(closing||uninstalling)throw Error('Playlist Wizard is stopping.');
     if(typeof name!=='string'||!args||typeof args!=='object'||Array.isArray(args))throw Error('Invalid action');
+    if(name==='uninstall') {
+      if(demo)throw Error('Example data only');
+      if(args.confirmed!==true)throw Error('Confirm uninstalling Playlist Wizard first.');
+      if(wizard.active)throw Error('Finish or cancel the current Wizard operation before uninstalling.');
+      uninstalling=true;
+      try { const result=await installation.uninstall();setTimeout(()=>{void close();},250).unref();return result; }
+      catch(error) { uninstalling=false;throw error; }
+    }
     if(name==='connect')return syncHost();
     if(name==='cancel'){wizard.cancel();return {ok:true};}
     if(!connected)throw Error(connectionError||'Connect a compatible rbxport library first');
@@ -73,6 +85,7 @@ export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-p
         if(!req.headers['content-type']?.startsWith('application/json'))return json({error:'JSON required'},415);
         let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>256*1024)throw Error('Request too large');}body=raw?JSON.parse(raw):{};
       }
+      if((uninstalling||closing)&&req.method==='POST')return json({error:'Playlist Wizard is stopping.'},409);
       if(req.method==='GET'&&url.pathname==='/api/panel')return json(model());
       if(req.method==='POST'&&url.pathname==='/api/action')return json(await action(body.action,body.args));
       if(req.method==='POST'&&url.pathname==='/api/ui/open') {
@@ -80,7 +93,7 @@ export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-p
         if(connected&&!wizard.active)await wizard.options();
         return json(result);
       }
-      if(req.method==='POST'&&url.pathname==='/api/shutdown'){json({ok:true});setTimeout(()=>{void close();},10);return;}
+      if(req.method==='POST'&&url.pathname==='/api/shutdown'){if(body.ifIdle===true&&wizard.active)return json({error:'Finish or cancel the current Wizard operation before updating.'},409);closing=true;json({ok:true});setTimeout(()=>{void close();},10);return;}
       if(req.method==='GET'&&url.pathname==='/api/events') {
         if(Number(url.searchParams.get('after'))!==revision)return json({revision});
         if(listeners.size>=12)return json({error:'Too many listeners'},429);

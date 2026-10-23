@@ -1,0 +1,11 @@
+<!-- Onboarding template. Provider approval and provenance/approval policies are still required. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters><parameter name="version" required="true" /></parameters>
+  <zip-file>
+    <pe-file path="release/Start-Rbxport.exe" product-name="Playlist Wizard for rbxport" product-version="${version}.0" company-name="Elmo Tuisk">
+      <authenticode-sign />
+    </pe-file>
+    <powershell-file path="*.ps1" max-matches="unbounded"><authenticode-sign /></powershell-file>
+    <powershell-file path="scripts/**/*.ps1" max-matches="unbounded"><authenticode-sign /></powershell-file>
+  </zip-file>
+</artifact-configuration>

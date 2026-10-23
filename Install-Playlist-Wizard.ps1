@@ -2,105 +2,171 @@ param(
     [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\rbxport-playlist-wizard'),
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'rbxport-playlist-wizard'),
     [string]$CacheDirectory = (Join-Path $PSScriptRoot '.install-cache'),
+    [string]$ShortcutRoot,
+    [string]$ExistingDirectory,
+    [string]$StatusFile,
+    [string]$CancellationFile,
     [switch]$NoShortcuts,
     [switch]$NoLaunch,
-    [switch]$StartWithRbxport = $true
+    [switch]$StartWithRbxport,
+    [switch]$NoRegistry
 )
 $ErrorActionPreference = 'Stop'
+function Set-SetupStatus([string]$State,[string]$Message) {
+    if($StatusFile) { [IO.File]::WriteAllText($StatusFile,($State+"`n"+$Message),(New-Object Text.UTF8Encoding($false))) }
+    Write-Host $Message
+}
+function Test-SetupCancellation {
+    if($CancellationFile -and (Test-Path -LiteralPath $CancellationFile)) { throw [OperationCanceledException]::new('Setup cancelled. Your existing installation and saved data were kept.') }
+}
+try {
+Test-SetupCancellation
 $ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 . (Join-Path $PSScriptRoot 'scripts\Desktop.ps1')
-if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { throw 'Playlist Wizard supports Windows x64.' }
+. (Join-Path $PSScriptRoot 'scripts\Installation.ps1')
+. (Join-Path $PSScriptRoot 'scripts\ReleaseTrust.ps1')
+if($StartWithRbxport) { Assert-RbxportReleaseTrust -Root $PSScriptRoot -RequireLauncher }
+$version = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'package.json') -Raw | ConvertFrom-Json).version
+$selection = @{DefaultRoot=$InstallDirectory;DefaultData=$DataDirectory}
+if ($ExistingDirectory) { $selection.ExplicitRoot=$ExistingDirectory; $selection.RequireExisting=$true }
+elseif ($PSBoundParameters.ContainsKey('InstallDirectory')) { $selection.ExplicitRoot=$InstallDirectory }
+else { $selection.RegisteredRoots=@(Get-PlaylistWizardRegisteredRoots -NoRegistry:$NoRegistry) }
+if ($PSBoundParameters.ContainsKey('DataDirectory')) { $selection.ExplicitData=$DataDirectory }
+$selected = Resolve-PlaylistWizardInstall @selection
+$InstallDirectory = $selected.root
+$DataDirectory = $selected.dataDirectory
+if ($selected.version -and [Version]$selected.version -gt [Version]$version) { throw 'A newer Playlist Wizard version is already installed. Download the latest setup to update it.' }
+if(Test-Path -LiteralPath (Join-Path $DataDirectory 'sync.sqlite')) { throw 'Choose a data directory separate from Playlist Sync.' }
+Stop-PlaylistWizardForUpdate $InstallDirectory $DataDirectory
+if ($selected.version) { Write-Host "Updating Playlist Wizard $($selected.version) in $InstallDirectory. Keeping the existing saved-data folder." }
+if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { throw 'This installer supports Windows x64. ARM64 is not yet supported.' }
+$null = Find-PlaylistWizardRbxport
 foreach ($path in @($InstallDirectory, $DataDirectory, $CacheDirectory)) {
-    if (-not [IO.Path]::IsPathRooted($path) -or $path.Contains('"')) { throw 'Use absolute paths without quotes.' }
+    if (-not [IO.Path]::IsPathRooted($path)) { throw 'Installation, data and cache paths must be absolute.' }
+    $null = Assert-PlaylistWizardPlainPath $path
+    New-Item -ItemType Directory -Force -Path $path | Out-Null
 }
 $InstallDirectory = [IO.Path]::GetFullPath($InstallDirectory)
-$sourceRoot = [IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
-if ($InstallDirectory.TrimEnd('\') -eq $sourceRoot -or $InstallDirectory.StartsWith($sourceRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Choose an installation directory outside the setup source.' }
-$existingPackage = Join-Path $InstallDirectory 'package.json'
-if (Test-Path -LiteralPath $existingPackage) {
-    $existingName = (Get-Content -LiteralPath $existingPackage -Raw | ConvertFrom-Json).name
-    if ($existingName -ne 'rbxport-playlist-wizard-addon') { throw 'That directory belongs to another application. Choose a separate Playlist Wizard directory.' }
+if ($InstallDirectory.TrimEnd('\') -eq $PSScriptRoot.TrimEnd('\')) { throw 'Choose an installation folder separate from the downloaded setup folder.' }
+$servicePid = Join-Path $DataDirectory 'service.pid'
+if (Test-Path -LiteralPath $servicePid) {
+    $serviceInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$([int](Get-Content -LiteralPath $servicePid -Raw))"
+    if ($serviceInfo -and $serviceInfo.Name -eq 'node.exe' -and $serviceInfo.CommandLine.Contains((Join-Path $InstallDirectory 'src\server.mjs'))) { throw 'Stop Playlist Wizard before installing an update. Your saved data will be kept.' }
 }
-$existingRecord=Join-Path $InstallDirectory 'installed.json'
-if(Test-Path -LiteralPath $existingRecord) {
-    $previousData=(Get-Content -LiteralPath $existingRecord -Raw | ConvertFrom-Json).dataDirectory
-    if(-not [IO.Path]::IsPathRooted($previousData)) { throw 'Invalid saved-data location in the existing installation.' }
-    if($PSBoundParameters.ContainsKey('DataDirectory') -and [IO.Path]::GetFullPath($DataDirectory) -ne [IO.Path]::GetFullPath($previousData)) { throw 'Updates must retain the existing saved-data location.' }
-    $DataDirectory=$previousData
-}
-if (Test-Path -LiteralPath (Join-Path $DataDirectory 'sync.sqlite')) { throw 'Choose a data directory separate from Playlist Sync.' }
-$pidFile = Join-Path $DataDirectory 'service.pid'
-if (Test-Path -LiteralPath $pidFile) {
-    $serviceInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$([int](Get-Content -LiteralPath $pidFile -Raw))"
-    if ($serviceInfo -and $serviceInfo.Name -eq 'node.exe' -and $serviceInfo.CommandLine.Contains((Join-Path $InstallDirectory 'src\server.mjs'))) { throw 'Stop Playlist Wizard before updating it.' }
-}
-foreach ($path in @($InstallDirectory, $DataDirectory, $CacheDirectory)) { New-Item -ItemType Directory -Force -Path $path | Out-Null }
-$dependencies = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'dependencies.json') -Raw | ConvertFrom-Json
-function Get-WizardVerifiedDownload {
+$manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'dependencies.json') -Raw | ConvertFrom-Json
+function Get-VerifiedDownload {
     param([string]$Url, [string]$Hash, [string]$Filename)
     $uri = [Uri]$Url
-    if ($uri.Scheme -ne 'https' -or $uri.Host -notin @('nodejs.org', 'www.gyan.dev') -or $Hash -notmatch '^[a-f0-9]{64}$') { throw 'Unexpected dependency source or checksum.' }
+    if ($uri.Scheme -ne 'https' -or $uri.Host -notin @('nodejs.org', 'github.com', 'www.gyan.dev')) { throw 'Unexpected download source' }
+    if ($Hash -notmatch '^[a-f0-9]{64}$') { throw 'Invalid dependency checksum' }
     $destination = Join-Path $CacheDirectory $Filename
-    if ((Test-Path -LiteralPath $destination) -and (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -eq $Hash) { return $destination }
+    if ((Test-Path -LiteralPath $destination) -and (Get-PlaylistWizardFileHash $destination) -eq $Hash) { return $destination }
     $temporary = "$destination.partial"
-    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $temporary
-    if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash -ne $Hash) { throw 'Dependency checksum mismatch. Nothing from this download was executed.' }
+    Test-SetupCancellation
+    Set-SetupStatus 'working' "Downloading $Filename ..."
+    $client = New-Object Net.WebClient
+    try {
+        $download=$client.DownloadFileTaskAsync($Url,$temporary)
+        $deadline=[DateTime]::UtcNow.AddMinutes(10)
+        while(-not $download.IsCompleted) {
+            if($CancellationFile -and (Test-Path -LiteralPath $CancellationFile)) { $client.CancelAsync(); Test-SetupCancellation }
+            if([DateTime]::UtcNow -gt $deadline) { $client.CancelAsync(); throw 'Download timed out. Check your connection and retry setup.' }
+            Start-Sleep -Milliseconds 100
+        }
+        $download.GetAwaiter().GetResult()
+    } finally { $client.Dispose() }
+    if ((Get-PlaylistWizardFileHash $temporary) -ne $Hash) { throw "Checksum verification failed for $Filename. Nothing from this download will be executed." }
     Move-Item -LiteralPath $temporary -Destination $destination -Force
     return $destination
 }
-$node = Get-WizardVerifiedDownload $dependencies.node.url $dependencies.node.sha256 'node.exe'
-$archivePath = Get-WizardVerifiedDownload $dependencies.ffmpeg.url $dependencies.ffmpeg.sha256 'ffmpeg.zip'
+Set-SetupStatus 'working' "Preparing Playlist Wizard $version ..."
+$nodeDownload = Get-VerifiedDownload $manifest.node.url $manifest.node.sha256 'node.exe'
+$ffmpegDownload = Get-VerifiedDownload $manifest.ffmpeg.url $manifest.ffmpeg.sha256 'ffmpeg-essentials.zip'
+Test-SetupCancellation
+Set-SetupStatus 'installing' 'Installing verified files. Closing setup will finish this step safely.'
 $runtime = Join-Path $InstallDirectory '.runtime'
 $tools = Join-Path $runtime 'tools'
-New-Item -ItemType Directory -Force -Path $tools | Out-Null
-$installedNode=Join-Path $runtime 'node.exe'
-if(-not(Test-Path -LiteralPath $installedNode) -or (Get-FileHash -LiteralPath $installedNode -Algorithm SHA256).Hash -ne $dependencies.node.sha256) {
-    Copy-Item -LiteralPath $node -Destination $installedNode -Force
-}
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
-try {
-    foreach ($tool in @(@('ffmpeg.exe', $dependencies.ffmpeg.ffmpegSha256), @('ffprobe.exe', $dependencies.ffmpeg.ffprobeSha256))) {
-        $entries = @($archive.Entries | Where-Object { $_.FullName -match ('/bin/' + [Regex]::Escape($tool[0]) + '$') })
-        if ($entries.Count -ne 1) { throw 'Cannot identify the audio tool in the verified archive.' }
-        $target = Join-Path $tools $tool[0]
-        [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $target, $true)
-        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $tool[1]) { throw 'Extracted audio-tool checksum mismatch.' }
-    }
-} finally { $archive.Dispose() }
-$include = @('src','public','scripts','docs','README.md','CHANGELOG.md','LICENSE','LICENSE-AGPL-3.0.txt','THIRD_PARTY.md','package.json','dependencies.json','Start-Playlist-Wizard.ps1','Stop-Playlist-Wizard.ps1','Launch-Playlist-Wizard.cmd','Configure-Rbxport-Startup.ps1')
+$include = @('src', 'public', 'scripts', 'docs', 'README.md', 'AGENTS.md', 'CHANGELOG.md', 'LICENSE', 'LICENSE-AGPL-3.0.txt', 'THIRD_PARTY.md', 'package.json', 'dependencies.json', 'Start-Playlist-Wizard.ps1', 'Stop-Playlist-Wizard.ps1', 'Launch-Playlist-Wizard.cmd', 'Configure-Rbxport-Startup.ps1', 'Uninstall-Playlist-Wizard.ps1')
+if(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'release\Start-Rbxport.exe')) { $include += 'release' }
+$include += 'release-signing.json'
+$ownedFiles = @('.runtime\node.exe','.runtime\tools\ffmpeg.exe','.runtime\tools\ffprobe.exe')
+$ownedFiles+=@($manifest.essentia.files.PSObject.Properties | ForEach-Object { '.runtime\essentia\'+$_.Name })
 foreach ($item in $include) {
     $source = Join-Path $PSScriptRoot $item
-    if (Test-Path -LiteralPath $source -PathType Container) {
+    if ((Get-Item -LiteralPath $source).PSIsContainer) {
+        $ownedFiles += @(Get-ChildItem -LiteralPath $source -Recurse -File -Force | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) })
+    } else { $ownedFiles += $item }
+}
+$obsoleteFiles=@(Get-PlaylistWizardObsoleteFiles -Root $InstallDirectory -KeepFiles $ownedFiles -DataDirectory $DataDirectory)
+# Reject linked program destinations before overwriting any existing file.
+foreach ($relative in $ownedFiles) { $null = Get-PlaylistWizardOwnedFile $InstallDirectory $relative }
+New-Item -ItemType Directory -Force -Path $tools | Out-Null
+$installedNode=Join-Path $runtime 'node.exe'
+if(-not(Test-Path -LiteralPath $installedNode) -or (Get-PlaylistWizardFileHash $installedNode) -ne $manifest.node.sha256) {
+    Copy-Item -LiteralPath $nodeDownload -Destination $installedNode -Force
+}
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::OpenRead($ffmpegDownload)
+try {
+    foreach ($item in @(@('ffmpeg.exe', $manifest.ffmpeg.ffmpegSha256), @('ffprobe.exe', $manifest.ffmpeg.ffprobeSha256))) {
+        $entries = @($archive.Entries | Where-Object { $_.FullName -match ('/bin/' + [Regex]::Escape($item[0]) + '$') })
+        if ($entries.Count -ne 1) { throw "Cannot identify $($item[0]) in the verified FFmpeg archive" }
+        $destination = Join-Path $tools $item[0]
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $destination, $true)
+        if ((Get-PlaylistWizardFileHash $destination) -ne $item[1]) { throw "Extracted checksum failed: $($item[0])" }
+    }
+} finally { $archive.Dispose() }
+foreach ($item in $include) {
+    $source = Join-Path $PSScriptRoot $item
+    if ((Get-Item -LiteralPath $source).PSIsContainer) {
         $target = Join-Path $InstallDirectory $item
         New-Item -ItemType Directory -Force -Path $target | Out-Null
         Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $target -Recurse -Force
-    } else { Copy-Item -LiteralPath $source -Destination (Join-Path $InstallDirectory $item) -Force }
+    } else { Copy-Item -LiteralPath $source -Destination $InstallDirectory -Force }
 }
 & (Join-Path $runtime 'node.exe') (Join-Path $InstallDirectory 'scripts\Install-Essentia.mjs') --directory (Join-Path $runtime 'essentia') --archive (Join-Path $CacheDirectory 'essentia.js-0.1.3.tgz')
-if ($LASTEXITCODE -ne 0) { throw 'Essentia setup did not complete. Check the verified cache or internet access and run setup again.' }
-@{dataDirectory=$DataDirectory;version='0.1.2'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $InstallDirectory 'installed.json') -Encoding UTF8
+if($LASTEXITCODE -ne 0) { throw 'Essentia setup did not complete. Run setup again; your saved data was kept.' }
+$ownedShortcuts = @()
+& (Join-Path $runtime 'node.exe') --version
+if ($LASTEXITCODE -ne 0) { throw 'The private runtime did not start.' }
+Remove-PlaylistWizardObsoleteFiles $obsoleteFiles
 if (-not $NoShortcuts -and -not $StartWithRbxport) {
     $shell = New-Object -ComObject WScript.Shell
-    $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Playlist Wizard'
-    New-Item -ItemType Directory -Force -Path $menu | Out-Null
-    foreach ($location in @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Playlist Wizard.lnk'), (Join-Path $menu 'Playlist Wizard.lnk'))) {
-        $shortcut = $shell.CreateShortcut($location)
-        $shortcut.TargetPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $InstallDirectory 'Start-Playlist-Wizard.ps1') + '"'
+    $menuDirectory = if ($ShortcutRoot) { Join-Path $ShortcutRoot 'Start Menu\Playlist Wizard' } else { Join-Path ([Environment]::GetFolderPath('Programs')) 'Playlist Wizard' }
+    $desktopDirectory = if ($ShortcutRoot) { Join-Path $ShortcutRoot 'Desktop' } else { [Environment]::GetFolderPath('Desktop') }
+    New-Item -ItemType Directory -Force -Path $menuDirectory | Out-Null
+    New-Item -ItemType Directory -Force -Path $desktopDirectory | Out-Null
+    $shortcutPaths = @((Join-Path $menuDirectory 'Playlist Wizard.lnk'), (Join-Path $desktopDirectory 'Playlist Wizard.lnk'))
+    foreach ($shortcutPath in $shortcutPaths) {
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $shortcut.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + (Join-Path $InstallDirectory 'Start-Playlist-Wizard.ps1') + '"'
         $shortcut.WorkingDirectory = $InstallDirectory
-        $shortcut.WindowStyle = 7
+        $shortcut.Description = 'Open Playlist Wizard for rbxport'
+        $shortcut.IconLocation = (Find-PlaylistWizardRbxport) + ',0'
         $shortcut.Save()
+        $ownedShortcuts += $shortcutPath
     }
-    $stop = $shell.CreateShortcut((Join-Path $menu 'Stop Playlist Wizard.lnk'))
-    $stop.TargetPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $stop.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $InstallDirectory 'Stop-Playlist-Wizard.ps1') + '"'
-    $stop.WindowStyle = 7
-    $stop.Save()
+    $stopPath=Join-Path $menuDirectory 'Stop Playlist Wizard.lnk'
+    if(Test-Path -LiteralPath $stopPath) {
+        $stop=$shell.CreateShortcut($stopPath)
+        if($stop.Arguments.Contains('"'+(Join-Path $InstallDirectory 'Stop-Playlist-Wizard.ps1')+'"')) { Remove-Item -LiteralPath $stopPath }
+    }
 }
-Write-Output 'Playlist Wizard 0.1.2 installed separately. Playlist Sync settings and music were not changed.'
-if ($StartWithRbxport -and -not $NoShortcuts) { & (Join-Path $InstallDirectory 'Configure-Rbxport-Startup.ps1') -NoStart }
+Write-PlaylistWizardInstallRecord -Root $InstallDirectory -DataDirectory $DataDirectory -Version $version -Files $ownedFiles -Shortcuts $ownedShortcuts -NoRegistry:$NoRegistry
+Write-Host "Installed successfully in $InstallDirectory. Open the Playlist Wizard shortcut whenever you need it."
+if ($StartWithRbxport) { & (Join-Path $InstallDirectory 'Configure-Rbxport-Startup.ps1') -NoStart }
 if (-not $NoLaunch) {
-    if($StartWithRbxport -and -not $NoShortcuts) { Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'rbxport-addons\Start-Rbxport.exe') }
-    else { & (Join-Path $InstallDirectory 'Start-Playlist-Wizard.ps1') }
+    if($StartWithRbxport) { Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'rbxport-addons\Start-Rbxport.exe') }
+    else {
+        $launcher=Join-Path $InstallDirectory 'Start-Playlist-Wizard.ps1'
+        Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $launcher + '"'))
+    }
+}
+Set-SetupStatus 'complete' 'Installed. Playlist Wizard will start and close with rbxport.'
+} catch {
+    $state=if($_.Exception -is [OperationCanceledException]) { 'cancelled' } else { 'error' }
+    Set-SetupStatus $state $_.Exception.Message
+    throw
 }

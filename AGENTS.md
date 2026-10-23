@@ -11,4 +11,4 @@ Read README.md, docs/architecture.md and docs/validation.md before changing beha
 - Use Node.js 24 and `node --test test/*.test.mjs`. Set FFMPEG for the real synthetic decoding test. Windows is needed for launcher syntax/behavior checks.
 - Update README, changelog and validation evidence for material changes. Do not claim live compatibility, musical reliability, installation or publication without corresponding evidence.
 - Keep pairing tokens, music, cookies, logs, caches and runtime binaries out of Git and release ZIPs. Private notes belong in ignored LOCAL_WORKSPACE.md.
-- Release tags must match package.json. Publish a source-only setup ZIP and checksums only after both CI platforms pass.
+- Release tags must match package.json. Publish the single-file signed Windows setup EXE as the main download, public source ZIP and post-signing checksums only after both CI platforms pass and the exact candidate passes Smart App Control validation. Updates preserve the existing saved-data location.

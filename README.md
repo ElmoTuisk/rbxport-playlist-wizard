@@ -18,10 +18,10 @@ Generation and analysis do not download music, import files, rewrite tags, chang
 
 ## Setup and use
 
-**[Download the source-only Windows setup ZIP](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases/latest)** · [Source and issues](https://github.com/ElmoTuisk/rbxport-playlist-wizard). Releases include checksums after Windows and Linux CI pass. The optimizer and musical analysis remain experimental.
+The next release’s main download is one **`playlist-wizard-<version>-windows-setup.exe`**, alongside public source and checksums after Windows/Linux CI and exact-candidate Smart App Control validation. **That signed release is pending.** The [currently published builds](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases) have the documented startup blocker. [Code signing policy](docs/code-signing.md).
 
-1. Extract the setup ZIP to its own folder, or copy this whole `playlist-wizard` source directory.
-2. Close rbxport and stop any older Wizard service, then run **Install-Playlist-Wizard.cmd**. It verifies pinned Node.js, FFmpeg and Essentia.js downloads and integrates the original rbxport shortcuts by default. Its installation/data directories stay separate from Playlist Sync; updates retain the existing saved-data location.
+1. When the signed release is available, download its Windows setup EXE from GitHub Releases.
+2. Close rbxport, open the EXE and choose **Install / Update**. Leave **Show Playlist Wizard when rbxport opens** checked. Setup finds an existing copy, keeps its saved-data folder and verifies pinned Node.js, FFmpeg and Essentia.js downloads. Choose an existing folder only for an unregistered portable installation.
 3. Open the original **rbxport** Desktop or Start Menu shortcut. Both enabled add-ons start automatically; allow up to 20 seconds for attachment. Run **Configure-Rbxport-Startup.ps1** in each installed add-on folder to enable integration later. If rbxport was already open without its local connection, close and reopen it normally once.
 4. Click **Playlist Wizard** below Tag List, choose a source and settings, enable **Analyze local audio for energy and transitions**, then **Generate draft**. Essentia is the default analysis backend; Advanced also offers the previous Basic estimator. Analysis is optional and runs only when requested.
 5. Review the draft and click **Create new playlist**. For USB sources, output goes to the same selected device library; this is not a full-device sync or a mirror of both USB formats.
@@ -32,10 +32,14 @@ Essentia analysis decodes the complete file, then measures up to 30 seconds each
 
 Automatic attachment preserves the rbxport shortcut name and executable icon, enables the current user's `RBXPORT_DEVTOOLS_PORT=43822`, and removes conventional separate add-on and Windows sign-in shortcuts. Both services follow the selected host process and stop when it exits. Starting rbxport does not analyze music or create a Wizard playlist. To disable, run `powershell -NoProfile -ExecutionPolicy Bypass -File "<installed folder>\Configure-Rbxport-Startup.ps1" -Disable`. Disabling Wizard preserves an enabled Sync launcher; disabling the last add-on restores unchanged original shortcuts and the previous user port. Customized commands are preserved. Direct executable and older Store launches bypass integration; Store rbxport 0.19.3 remains incompatible.
 
-Close rbxport normally to stop both services before updating. A legacy always-on Wizard service can be stopped with `Stop-Playlist-Wizard.ps1` from its installation folder. For separate manual-launch shortcuts, install with `-StartWithRbxport:$false`. Disabling integration alone does not stop an already running service. Updates overwrite matching files but do not remove obsolete program files automatically. No automatic updater is installed.
+Updates remove obsolete program files only when their previous ownership and checksums match; recognized legacy setup scripts are also removed. Edited files, unknown files and saved data are retained.
+
+Close rbxport before updating. Setup stops an idle older Wizard service belonging to that installation; active work and unrelated processes block updates. The EXE’s Cancel/close requests safe cancellation. Source installation remains available with `Install-Playlist-Wizard.cmd`; source builds cannot enable shortcuts without approved signed release files. No automatic updater is installed.
 
 
-Shortcut startup uses a small console-free Windows launcher built from the included public source during setup. It waits for each enabled add-on's sidebar button and displays an error if startup fails. The generated launcher is unsigned, like the Sync setup; restrictive Windows application-control policies may block it. Windows .NET Framework and its compiler must be available.
+The development installer requires a prebuilt launcher and PowerShell scripts signed by an approved, trusted publisher. It does not compile a launcher on the user’s computer. Trusted signing approval is pending, and unsigned source builds refuse shortcut integration.
+
+Remove a managed installation through **Playlist Wizard → Installation → Uninstall…**, review the confirmation and choose **Uninstall Playlist Wizard**. Finish or cancel analysis/creation first. The helper removes only matching owned program files and its own startup registration. Music, playlists, saved settings, edited/unknown files and Playlist Sync remain. Windows **Installed apps** offers the same uninstall. Updating an older copy with the EXE adds this option.
 
 ## Current limits
 

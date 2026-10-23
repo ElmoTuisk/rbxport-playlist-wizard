@@ -1,13 +1,13 @@
 /** Independent compact renderer; serialized into the host without imports. */
 export function mountWizard(root,initial,send) {
-  let model=initial,busy=false,error='',dirty=false,advanced=false,draftId=null;
+  let model=initial,busy=false,error='',dirty=false,advanced=false,installationOpen=false,uninstallReview=false,uninstallStarted=false,draftId=null;
   const values={source:'playlists',mode:'all',songs:20,minutes:60,curve:'build',analyze:false,analysisBackend:'essentia',overlapBars:32,maxTempoPercent:8,keyLock:true,strictKey:false,seed:'1'};
   let selected=new Set(),locks={},overrides={};
   let playlistName='Wizard set';
   let anchors=[3,4,5,6.5,8,9];
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const minutes=seconds=>`${Math.round(seconds/60)} min`;
-  const disabled=()=>busy||Boolean(model.wizard?.active)||!model.connected;
+  const disabled=()=>uninstallStarted||busy||Boolean(model.wizard?.active)||!model.connected;
   const button=(action,text,extra='')=>`<button type="button" data-action="${action}" ${extra}>${text}</button>`;
   const option=(value,label,current)=>`<option value="${esc(value)}" ${value===current?'selected':''}>${esc(label)}</option>`;
   const number=(value,digits=1)=>typeof value==='number'&&Number.isFinite(value)?value.toFixed(digits):'unknown';
@@ -63,7 +63,8 @@ export function mountWizard(root,initial,send) {
       <p class="pw-muted" data-settings-changed ${dirty?'':'hidden'}>Settings changed. Regenerate and review before creating.</p>
       ${draft.write?`<p role="status">${esc(draft.write.message||draft.write.status)}</p>`:''}
       <form data-create><label>New playlist name<input name="playlistName" maxlength="160" value="${esc(draft.write?.name||playlistName)}" required ${off}></label><button type="submit" ${off||dirty||written||uncertain?'disabled':''}>${written?'Created and verified':draft.write?.targetId?'Resume creation':'Create new playlist'}</button></form>
-      </section>`:''}<footer class="pw-foot">Independent add-on · experimental 0.1.2</footer>`;
+      </section>`:''}
+      ${model.installation?.canUninstall?`<details class="pw-more" data-installation ${installationOpen?'open':''}><summary>Installation</summary><p class="pw-muted">Remove this add-on while keeping your music, playlists, saved settings and Playlist Sync.</p>${uninstallStarted?'<p role="status">Playlist Wizard is uninstalling. Your saved data will be kept.</p>':uninstallReview?`<p>Uninstall Playlist Wizard?</p>${button('confirm-uninstall','Uninstall Playlist Wizard',busy||w.active?'disabled':'')} ${button('cancel-uninstall','Keep installed',busy?'disabled':'')}`:button('review-uninstall','Uninstall…',busy||w.active?'disabled':'')}</details>`:''}<footer class="pw-foot">Independent add-on · experimental 0.1.2</footer>`;
   }
   async function act(action,args={}) {if(busy)return;busy=true;error='';try{return await send(action,args);}catch(e){error=e.message;}finally{busy=false;render();}}
   function markDirty(){dirty=true;const create=root.querySelector?.('[data-create] button[type="submit"]');if(create)create.disabled=true;const notice=root.querySelector?.('[data-settings-changed]');if(notice)notice.hidden=false;}
@@ -80,11 +81,18 @@ export function mountWizard(root,initial,send) {
   }
   root.addEventListener('change',edit);
   root.addEventListener('input',event=>{if(!['SELECT','select'].includes(event.target.tagName))edit(event);});
-  root.addEventListener('toggle',event=>{if(event.target.dataset?.advanced!==undefined)advanced=event.target.open;},true);
+  root.addEventListener('toggle',event=>{if(event.target.dataset?.advanced!==undefined)advanced=event.target.open;if(event.target.dataset?.installation!==undefined)installationOpen=event.target.open;},true);
   root.addEventListener('click',async event=>{
     const el=event.target.closest('[data-action]');if(!el||el.disabled)return;
     if(el.dataset.action==='lock'){const i=Number(el.dataset.position),track=model.wizard?.draft?.tracks[i];if(track){if(locks[i]===track.id)delete locks[i];else locks[i]=track.id;dirty=true;render();}return;}
-    await act(el.dataset.action);
+    const action=el.dataset.action;
+    if(action==='review-uninstall'){if(!busy&&!model.wizard?.active){installationOpen=true;uninstallReview=true;render();}return;}
+    if(action==='cancel-uninstall'){uninstallReview=false;render();return;}
+    if(action==='confirm-uninstall'){
+      if(!uninstallReview||busy||model.wizard?.active)return;
+      const result=await act('uninstall',{confirmed:true});if(result?.started){uninstallStarted=true;render();}return;
+    }
+    await act(action);
   });
   root.addEventListener('submit',async event=>{
     event.preventDefault();if(disabled())return;

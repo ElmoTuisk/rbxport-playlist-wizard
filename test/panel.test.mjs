@@ -31,3 +31,20 @@ test('draft preview shows excluded duration counts without opening transition no
   assert.match(f.root.innerHTML,/<p class="pw-muted" role="status">Excluded from selection: 2 over 30 minutes · 1 with unknown duration · 3 unavailable files\.<\/p>/);
   assert(f.root.innerHTML.indexOf('Excluded from selection:')<f.root.innerHTML.indexOf('Analysis and transition notes'));
 });
+
+test('managed uninstall has a separate confirmation, works disconnected and blocks active work',async()=>{
+  const f=fixture();
+  const click=action=>f.events.click({target:{closest:()=>({dataset:{action}})}});
+  assert.doesNotMatch(f.root.innerHTML,/Uninstall…/);
+  f.controller.update({...f.initial,connected:false,installation:{canUninstall:true}});
+  assert.match(f.root.innerHTML,/Uninstall…/);
+  await click('confirm-uninstall');assert.equal(f.calls.length,0);
+  await click('review-uninstall');assert.match(f.root.innerHTML,/Uninstall Playlist Wizard\?/);
+  assert.match(f.root.innerHTML,/saved settings and Playlist Sync/);
+  await click('cancel-uninstall');await click('confirm-uninstall');assert.equal(f.calls.length,0);
+  f.controller.update({...f.initial,installation:{canUninstall:true},wizard:{...f.initial.wizard,active:'generate'}});
+  await click('review-uninstall');await click('confirm-uninstall');assert.equal(f.calls.length,0);
+  f.controller.update({...f.initial,connected:false,installation:{canUninstall:true}});
+  await click('review-uninstall');await click('confirm-uninstall');
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].action,'uninstall');assert.equal(f.calls[0].args.confirmed,true);
+});

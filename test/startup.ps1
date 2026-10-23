@@ -1,7 +1,6 @@
+param([switch]$SkipNativeExecution)
 $ErrorActionPreference='Stop'
 $sourceRoot=Split-Path $PSScriptRoot -Parent
-. (Join-Path $sourceRoot 'scripts\Startup.ps1')
-. (Join-Path $sourceRoot 'scripts\HostShortcuts.ps1')
 function Assert-Startup($Condition,$Message) { if(-not $Condition) { throw $Message } }
 $global:fixturePort=$null
 function Get-RbxportUserPort { return $global:fixturePort }
@@ -10,6 +9,20 @@ function Send-RbxportEnvironmentChanged { }
 $fixtureRoot=Join-Path ([IO.Path]::GetTempPath()) ('rbxport-startup-'+[Guid]::NewGuid().ToString('N'))
 $options=@{StartupDirectory=(Join-Path $fixtureRoot 'Startup');StateDirectory=(Join-Path $fixtureRoot 'Connection');ProgramsDirectory=(Join-Path $fixtureRoot 'Programs');DesktopDirectory=(Join-Path $fixtureRoot 'Desktop');RbxportPath=(Join-Path $fixtureRoot 'rbxport.exe')}
 try {
+    # Synthetic trusted-artifact seam lives only in this temporary fixture copy.
+    # Production signature validation is exercised separately, with no dev bypass.
+    $helperRoot=Join-Path $fixtureRoot 'helpers'
+    New-Item -ItemType Directory -Path (Join-Path $helperRoot 'scripts'),(Join-Path $helperRoot 'release') -Force | Out-Null
+    foreach($name in @('Startup.ps1','HostShortcuts.ps1','Start-Rbxport.ps1')) { Copy-Item -LiteralPath (Join-Path $sourceRoot ('scripts\'+$name)) -Destination (Join-Path $helperRoot 'scripts') }
+    Set-Content -LiteralPath (Join-Path $helperRoot 'scripts\ReleaseTrust.ps1') 'function Assert-RbxportReleaseTrust { param($Root,[switch]$RequireLauncher,[switch]$Installed) }'
+    $compiler=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    & $compiler /nologo /target:winexe ('/out:'+(Join-Path $helperRoot 'release\Start-Rbxport.exe')) /reference:System.Windows.Forms.dll (Join-Path $sourceRoot 'scripts\RbxportLauncher.cs')
+    Assert-Startup ($LASTEXITCODE -eq 0) 'Synthetic launcher build failed'
+    . (Join-Path $helperRoot 'scripts\Startup.ps1')
+    . (Join-Path $helperRoot 'scripts\HostShortcuts.ps1')
+    function Get-RbxportUserPort { return $global:fixturePort }
+    function Set-RbxportUserPort($Value) { $global:fixturePort=$Value }
+    function Send-RbxportEnvironmentChanged { }
     foreach($directory in @($options.StartupDirectory,$options.ProgramsDirectory,$options.DesktopDirectory)) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
     Set-Content -LiteralPath $options.RbxportPath 'synthetic host; never executed'
     $shell=New-Object -ComObject WScript.Shell
@@ -136,6 +149,7 @@ Add-Content -LiteralPath (Join-Path $parent ('dispatch-'+(Split-Path $PSScriptRo
     function Start-Sleep { param($Milliseconds);$global:fixtureWaits++;$global:fixtureServiceStarted=$false }
     & $launcher -Background -NoWindow -NodePath Test-Node
     Assert-Startup ($global:fixtureWaits -eq 1 -and $global:fixtureServiceStarted) 'Quick reopen waits for previous session'
+    if(-not $SkipNativeExecution) {
     # Exercise the generated Windows shortcut, native EXE and child PowerShell together.
     # The helper is synthetic: it never opens the real host, library or network.
     @'
@@ -161,6 +175,7 @@ Set-Content -LiteralPath (Join-Path $PSScriptRoot 'native-marker.txt') 'console-
     $process=[Diagnostics.Process]::Start($native)
     try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 0) 'Normal close during startup does not display a failure' } finally { if(-not $process.HasExited) { $process.Kill() }; $process.Dispose() }
     Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-status.txt') -Raw).StartsWith('Closed ')) 'Cancelled startup is distinguished from ready'
+    }
 } finally {
     $resolved=[IO.Path]::GetFullPath($fixtureRoot)
     $tempPrefix=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'

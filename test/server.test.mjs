@@ -4,6 +4,31 @@ import { mkdtemp,rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { startServer } from '../src/server.mjs';
+
+test('uninstall requires confirmation and idle state; helper failure recovers and pending uninstall locks actions',async t=>{
+  const dataDir=await mkdtemp(join(tmpdir(),'playlist-wizard-uninstall-'));
+  let calls=0,finish;
+  const installationClient={async status(){return {canUninstall:true};},async uninstall(){calls++;if(calls===1)throw Error('Fixture helper failed');return new Promise(resolve=>{finish=resolve;});}};
+  const bridge={connected:false,async connect(){throw Error('Fixture disconnected');},close(){}};
+  const app=await startServer({port:0,dataDir,bridgeClient:bridge,installationClient});
+  t.after(async()=>{await app.close();await rm(dataDir,{recursive:true,force:true});});
+  const base=new URL(app.url).origin,headers={Authorization:'Bearer '+app.token,'Content-Type':'application/json'};
+  const post=(action,args={})=>fetch(base+'/api/action',{method:'POST',headers,body:JSON.stringify({action,args})});
+  assert.equal((await(await fetch(base+'/api/panel',{headers})).json()).installation.canUninstall,true);
+  assert.equal((await post('uninstall')).status,400);assert.equal(calls,0);
+  app.wizard.active='generate';
+  assert.equal((await post('uninstall',{confirmed:true})).status,400);assert.equal(calls,0);
+  const shutdown=await fetch(base+'/api/shutdown',{method:'POST',headers,body:'{"ifIdle":true}'});
+  assert.equal(shutdown.status,409);assert(app.server.listening);
+  app.wizard.active=null;
+  assert.match((await(await post('uninstall',{confirmed:true})).json()).error,/Fixture helper failed/);
+  const pending=post('uninstall',{confirmed:true});
+  for(let i=0;i<100&&!finish;i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert(finish);assert.equal(calls,2);
+  assert.equal((await post('generate')).status,409);
+  finish({started:true});assert.equal((await pending).status,200);
+  assert.equal(calls,2);assert.equal(app.store.all('wizard-writes').length,0);
+});
 test('independent API requires its own pairing token, rejects cross-origin requests and keeps demo creation read-only',async t=>{
   const dataDir=await mkdtemp(join(tmpdir(),'playlist-wizard-api-'));
   const app=await startServer({port:0,dataDir,demo:true});t.after(async()=>{await app.close();await rm(dataDir,{recursive:true,force:true});});

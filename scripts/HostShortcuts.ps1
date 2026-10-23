@@ -25,24 +25,15 @@ function Test-RbxportOwnedShortcut($Entry,$Link) {
 }
 function Initialize-RbxportNativeLauncher([string]$StateDirectory) {
     $null=Assert-RbxportIntegrationPath $StateDirectory
-    $source=Join-Path $PSScriptRoot 'RbxportLauncher.cs'
+    . (Join-Path $PSScriptRoot 'ReleaseTrust.ps1')
+    $root=Split-Path $PSScriptRoot -Parent
+    Assert-RbxportReleaseTrust -Root $root -RequireLauncher -Installed
+    $source=Join-Path $root 'release\Start-Rbxport.exe'
     $executable=Join-Path $StateDirectory 'Start-Rbxport.exe'
-    $receipt=Join-Path $StateDirectory 'launcher-build.json'
-    $sourceHash=Get-RbxportShortcutHash $source
-    if((Test-Path -LiteralPath $receipt) -and (Test-Path -LiteralPath $executable)) {
-        $build=Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
-        if($build.source -eq $sourceHash -and $build.executable -eq (Get-RbxportShortcutHash $executable)) { return $executable }
-    }
-    $compiler=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    if(-not(Test-Path -LiteralPath $compiler)) { throw 'Windows .NET Framework is required to build the rbxport shortcut launcher.' }
     New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
-    $temporary=Join-Path $StateDirectory ('launcher-'+[Guid]::NewGuid().ToString('N')+'.exe')
-    try {
-        $result=& $compiler /nologo /target:winexe ('/out:'+$temporary) /reference:System.Windows.Forms.dll $source 2>&1
-        if($LASTEXITCODE -ne 0) { throw ('The rbxport shortcut launcher could not be built: '+($result -join "`n")) }
-        Move-Item -LiteralPath $temporary -Destination $executable -Force
-        @{source=$sourceHash;executable=(Get-RbxportShortcutHash $executable)} | ConvertTo-Json | Set-Content -LiteralPath $receipt -Encoding UTF8
-    } finally { if(Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
+    if(-not(Test-Path -LiteralPath $executable) -or (Get-RbxportShortcutHash $source) -ne (Get-RbxportShortcutHash $executable)) {
+        Copy-Item -LiteralPath $source -Destination $executable -Force
+    }
     return $executable
 }
 function Set-RbxportHostShortcuts {

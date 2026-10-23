@@ -1,0 +1,9 @@
+<!-- Onboarding template. This outer setup already contains the verified signed payload. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters><parameter name="version" required="true" /></parameters>
+  <zip-file>
+    <pe-file path="playlist-wizard-${version}-windows-setup.exe" product-name="Playlist Wizard for rbxport" product-version="${version}.0" company-name="Elmo Tuisk">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

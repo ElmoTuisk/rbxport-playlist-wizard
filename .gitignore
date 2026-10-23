@@ -13,3 +13,7 @@ service.pid
 *.zip
 cookies*.txt
 LOCAL_WORKSPACE.md
+
+dist/
+
+release/

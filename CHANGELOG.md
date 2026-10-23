@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.1.2 — 2026-10-23
+## 0.1.2 — 2026-10-23 (unreleased)
+
+- Remove obsolete program files during updates only after ownership/checksum verification. Recognize historical setup/packager scripts by public SHA-256 values; retain changed or unknown files and all saved data.
+
+- Add a single-file Windows setup, managed update discovery with saved-data retention, and a separate confirmation for uninstall inside the compact popup. Preserve companion registration, edited files, music and saved data.
+- Require prebuilt trusted, timestamped launcher/script signatures before shortcut integration. Remove local launcher compilation; signing approval is pending and unsigned source integration fails closed.
+- Prepare two-stage provider signing, final signed setup verification and post-signing checksums. Publication requires the exact candidate’s successful Smart App Control validation hash; no signed release has been published.
 
 - Start enabled add-ons concurrently through the shared launcher. Closing the owning rbxport session during startup cancels its pending launchers promptly, releases the launch lock and prevents later clicks from queuing a surprise reopen.
 - Bound repeated-click waiting, recover an abandoned launch mutex, and distinguish a normal close from a startup failure. Extend synthetic concurrency/cancellation and native status checks. Saved data and companion independence are preserved.
