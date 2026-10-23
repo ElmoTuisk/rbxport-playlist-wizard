@@ -1,6 +1,6 @@
 {
   "name": "rbxport-playlist-wizard-addon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "license": "GPL-2.0-or-later AND AGPL-3.0-or-later",

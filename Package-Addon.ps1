@@ -1,7 +1,7 @@
-param([string]$Destination = (Join-Path $PSScriptRoot 'playlist-wizard-0.1.0-windows-setup.zip'))
+param([string]$Destination = (Join-Path $PSScriptRoot 'playlist-wizard-0.1.1-windows-setup.zip'))
 $ErrorActionPreference = 'Stop'
 $version = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'package.json') -Raw | ConvertFrom-Json).version
-if ($version -ne '0.1.0') { throw 'Update the packager version to match package.json.' }
+if ($version -ne '0.1.1') { throw 'Update the packager version to match package.json.' }
 $include = @('src','public','scripts','test','docs','.github','README.md','AGENTS.md','CONTRIBUTING.md','CHANGELOG.md','LICENSE','LICENSE-AGPL-3.0.txt','THIRD_PARTY.md','package.json','dependencies.json','.gitignore','Start-Playlist-Wizard.ps1','Stop-Playlist-Wizard.ps1','Launch-Playlist-Wizard.cmd','Install-Playlist-Wizard.ps1','Install-Playlist-Wizard.cmd','Package-Addon.ps1','Configure-Rbxport-Startup.ps1')
 $paths = $include | ForEach-Object { Join-Path $PSScriptRoot $_ }
 foreach ($path in $paths) { if (-not (Test-Path -LiteralPath $path)) { throw "Missing package input: $path" } }

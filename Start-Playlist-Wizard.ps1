@@ -64,10 +64,10 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
     Start-Sleep -Milliseconds 250
 }
 if (-not $serviceReady) { throw "The service did not start. See $stateDirectory\service-error.log" }
-if ($Background) { Write-Output 'Playlist Wizard is attached to this rbxport session and will close with it.'; return }
 $launchUrl = (Get-Content -LiteralPath $launchFile -Raw).Trim()
-$windowArguments = Get-PlaylistWizardWindowArguments $launchUrl (Join-Path $stateDirectory 'window-profile')
 $hostConnection = Connect-PlaylistWizardHost $launchUrl
+if ($Background) { Write-Output 'Playlist Wizard is attached to this rbxport session and will close with it.'; return }
+$windowArguments = Get-PlaylistWizardWindowArguments $launchUrl (Join-Path $stateDirectory 'window-profile')
 if (-not $NoWindow -and -not $HostOnly) {
     if ($Detached) { Start-Process -FilePath $browserPath -ArgumentList $windowArguments }
     else {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 — 2026-10-23
+
+- Accept Explorer link-tracking metadata refreshes when every saved shortcut property is unchanged, so normal launches cannot break subsequent updates or original-shortcut restoration.
+- Fix integrated rbxport shortcuts doing nothing on affected Windows configurations with the same source-built, console-free Windows launcher as Playlist Sync 0.11.4. Dispatch both enabled add-ons without allocating PowerShell consoles; setup uses that launcher too.
+- Confirm Wizard's sidebar button before reporting background startup success. Surface failures through the shared launcher while still attempting the companion add-on. Preserve saved-data paths and original shortcut restoration.
+- Keep an existing Node runtime when its verified checksum already matches, avoiding redundant runtime replacement on updates.
+- Extend isolated Windows fixtures to execute generated shortcuts and verify console-free children, successful startup and captured failures. The generated launcher is unsigned and can be blocked by Windows application-control policies.
+
 ## 0.1.0 — 2026-10-23
 
 - Integrate with the original rbxport Desktop and Start Menu shortcuts by default, alongside an independently installed Playlist Sync. Remove conventional extra add-on and sign-in shortcuts, preserve the original host icon and restore original host shortcuts when the last add-on is disabled.

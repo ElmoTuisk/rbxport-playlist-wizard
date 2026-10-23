@@ -63,7 +63,7 @@ export function mountWizard(root,initial,send) {
       <p class="pw-muted" data-settings-changed ${dirty?'':'hidden'}>Settings changed. Regenerate and review before creating.</p>
       ${draft.write?`<p role="status">${esc(draft.write.message||draft.write.status)}</p>`:''}
       <form data-create><label>New playlist name<input name="playlistName" maxlength="160" value="${esc(draft.write?.name||playlistName)}" required ${off}></label><button type="submit" ${off||dirty||written||uncertain?'disabled':''}>${written?'Created and verified':draft.write?.targetId?'Resume creation':'Create new playlist'}</button></form>
-      </section>`:''}<footer class="pw-foot">Independent add-on · experimental 0.1.0</footer>`;
+      </section>`:''}<footer class="pw-foot">Independent add-on · experimental 0.1.1</footer>`;
   }
   async function act(action,args={}) {if(busy)return;busy=true;error='';try{return await send(action,args);}catch(e){error=e.message;}finally{busy=false;render();}}
   function markDirty(){dirty=true;const create=root.querySelector?.('[data-create] button[type="submit"]');if(create)create.disabled=true;const notice=root.querySelector?.('[data-settings-changed]');if(notice)notice.hidden=false;}

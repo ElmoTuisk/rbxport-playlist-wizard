@@ -1,8 +1,20 @@
 # Validation record
 
-Updated 23 October 2026. Experimental version 0.1.0. Fixture results do not establish live host compatibility or musical quality.
+## Shortcut launch correction — 23 October 2026
+
+The previous programmatic Explorer/ShellExecute checks did not establish that ordinary user clicks worked. The user subsequently confirmed that the 0.11.3/0.1.0 shortcuts did nothing. Fresh PowerShell-target shortcut files also failed. A console-free native shortcut target opened the app, but add-on launch still failed until its PowerShell children also used explicit console-free process creation. After that change, authenticated services connected to the same host PID and the user confirmed both sidebar entries were present. These checks used temporary automatic-sync pause; saved scheduling preferences were not changed.
+
+Both affected distributions now include public C# launcher source and matching installer/shortcut changes. Background launchers check sidebar readiness before returning. Windows fixtures exercise generated .lnk dispatch, synthetic console-free PowerShell children, companion dispatch, ready/error status and failure capture, without real music or library operations.
+
+Local validation encountered Windows Code Integrity application-control blocks on newly compiled fixture EXEs (events 3077/3033), including outside the sandbox. Security policy was not changed. Those blocked cases are not passing test evidence. The already-running diagnostic launcher opened successfully; the new release still requires clean Windows CI and release verification. This supersedes the earlier shortcut-success wording below; prior test and release counts remain historical.
 
 
+Updated 23 October 2026. Experimental version 0.1.1. Fixture results do not establish live host compatibility or musical quality.
+
+
+The updated Wizard installer also passed an isolated offline update with verified cached dependencies, downloads/fetch blocked and its synthetic saved-data marker retained. The Sync ownership fixture now includes the actual new C# source file. Shortcut records compare saved public properties as well as file hashes, accepting Explorer tracking-only changes while preserving customized commands/descriptions; the tracking-change and original-byte restore fixture passed.
+
+Final local fixture results cover all 185 Sync and 47 Wizard tests with passing results across the full sandbox runs and targeted reruns, with no skips. Sandbox runs passed 178/185 and 42/47; six Sync and five Wizard loopback failures passed the 21-test external-fetch-blocked API/OAuth rerun. Sync's separate install/update fixture exposed a transient identical-runtime overwrite lock; checksum-preserving runtime reuse fixed it and both installation tests passed. The final console-free startup fixtures for both distributions passed, including real generated shortcut dispatch, failed-Sync/continuing-Wizard dispatch and error capture. Earlier Code Integrity blocks remain an environmental limitation, not passing evidence; final builds use the same compiler target as the working prototype. Real FFmpeg/ffprobe, pinned Essentia and Windows DPAPI were included. Clean CI and published-asset verification are recorded separately after completion.
 ## Original shortcut integration — 23 October 2026
 
 All **47 Wizard tests** have passing Windows/Node 24 results, with real synthetic FFmpeg and pinned Essentia; none skipped. The full sandbox run passed 42, with five API fixtures blocked by loopback EACCES; all five passed outside the sandbox with external fetches blocked. Final startup/cancellation corrections passed targeted reruns. The original 43-test evidence below remains historical.

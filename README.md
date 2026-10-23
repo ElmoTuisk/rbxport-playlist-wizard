@@ -1,6 +1,6 @@
 # Playlist Wizard for rbxport
 
-An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental version 0.1.0 · Windows x64 · Node.js 24.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
+An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental version 0.1.1 · Windows x64 · Node.js 24.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
 
 ## What works in this development build
 
@@ -31,6 +31,9 @@ Essentia analysis decodes the complete file, then measures up to 30 seconds each
 Automatic attachment preserves the rbxport shortcut name and executable icon, enables the current user's `RBXPORT_DEVTOOLS_PORT=43822`, and removes conventional separate add-on and Windows sign-in shortcuts. Both services follow the selected host process and stop when it exits. Starting rbxport does not analyze music or create a Wizard playlist. To disable, run `powershell -NoProfile -ExecutionPolicy Bypass -File "<installed folder>\Configure-Rbxport-Startup.ps1" -Disable`. Disabling Wizard preserves an enabled Sync launcher; disabling the last add-on restores unchanged original shortcuts and the previous user port. Customized commands are preserved. Direct executable and older Store launches bypass integration; Store rbxport 0.19.3 remains incompatible.
 
 Close rbxport normally to stop both services before updating. A legacy always-on Wizard service can be stopped with `Stop-Playlist-Wizard.ps1` from its installation folder. For separate manual-launch shortcuts, install with `-StartWithRbxport:$false`. Disabling integration alone does not stop an already running service. Updates overwrite matching files but do not remove obsolete program files automatically. No automatic updater is installed.
+
+
+Shortcut startup uses a small console-free Windows launcher built from the included public source during setup. It waits for each enabled add-on's sidebar button and displays an error if startup fails. The generated launcher is unsigned, like the Sync setup; restrictive Windows application-control policies may block it. Windows .NET Framework and its compiler must be available.
 
 ## Current limits
 

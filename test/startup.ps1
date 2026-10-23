@@ -32,14 +32,17 @@ try {
     Assert-Startup (@(Get-ChildItem -LiteralPath $options.StartupDirectory -Filter '*.lnk').Count -eq 0) 'Neither add-on remains at Windows sign-in'
     Assert-Startup (@(Get-ChildItem -LiteralPath $options.DesktopDirectory -Filter '*.lnk').Count -eq 1) 'Only original rbxport desktop entry remains'
     $link=$shell.CreateShortcut($ordinary)
-    Assert-Startup ($link.Arguments.Contains('Start-Rbxport.ps1') -and $link.IconLocation -eq ($options.RbxportPath+',0')) 'Shared shortcut keeps original host icon'
+    Assert-Startup ($link.TargetPath -eq (Join-Path $options.StateDirectory 'Start-Rbxport.exe') -and -not $link.Arguments -and $link.WindowStyle -eq 1 -and $link.IconLocation -eq ($options.RbxportPath+',0')) 'Native shared shortcut keeps original host icon'
     $syncRoot=Join-Path $fixtureRoot 'Playlist Sync';$wizardRoot=Join-Path $fixtureRoot 'Playlist Wizard'
     Set-RbxportAddonStartup -Root $syncRoot @options
     $state=Get-Content -LiteralPath (Join-Path $options.StateDirectory 'startup.json') -Raw | ConvertFrom-Json
     Assert-Startup ($state.addons.Count -eq 2) 'Enable is idempotent'
+    $tracking=[IO.File]::ReadAllBytes($ordinary);$tracking[36]=$tracking[36] -bxor 1;[IO.File]::WriteAllBytes($ordinary,$tracking)
+    Set-RbxportAddonStartup -Root $syncRoot @options
+    Assert-Startup ($shell.CreateShortcut($ordinary).TargetPath -eq (Join-Path $options.StateDirectory 'Start-Rbxport.exe')) 'Explorer tracking metadata changes do not break updates'
     Set-RbxportAddonStartup -Root $syncRoot -Disable @options
     $link=$shell.CreateShortcut($ordinary)
-    Assert-Startup ($global:fixturePort -eq '43822' -and $link.Arguments.Contains('Start-Rbxport.ps1')) 'Disable Sync preserves Wizard integration'
+    Assert-Startup ($global:fixturePort -eq '43822' -and $link.TargetPath -eq (Join-Path $options.StateDirectory 'Start-Rbxport.exe')) 'Disable Sync preserves Wizard integration'
     Assert-Startup (Test-Path -LiteralPath (Join-Path $options.StateDirectory 'Start-Rbxport.ps1')) 'Shared launcher survives removing either companion'
     Set-RbxportAddonStartup -Root $wizardRoot -Disable @options
     Assert-Startup (-not $global:fixturePort) 'Last disable restores absent original port'
@@ -71,27 +74,35 @@ try {
     Assert-Startup ([Convert]::ToBase64String([IO.File]::ReadAllBytes($ordinary)) -eq $original) 'Migration retains true original bytes'
     Set-RbxportAddonStartup -Root $syncRoot @options
     Set-RbxportAddonStartup -Root $wizardRoot @options
-    $global:fixtureHostRunning=$false;$global:fixtureHostStarts=0;$global:fixtureAddonStarts=@()
+    $global:fixtureHostRunning=$false;$global:fixtureHostStarts=0
+    $dispatch=Join-Path $fixtureRoot 'dispatch.txt'
+    foreach($root in @($syncRoot,$wizardRoot)) {
+        @'
+param([switch]$Background,[switch]$NoWindow,[switch]$PauseAutomatic,[string]$RbxportPath)
+if(-not $Background -or -not $NoWindow -or -not $PauseAutomatic -or -not(Test-Path -LiteralPath $RbxportPath)) { exit 7 }
+Add-Type 'using System; using System.Runtime.InteropServices; public class FixtureConsole { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'
+if([FixtureConsole]::GetConsoleWindow() -ne [IntPtr]::Zero) { exit 8 }
+Add-Content -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'dispatch.txt') -Value (Split-Path $PSScriptRoot -Leaf)
+'@ | Set-Content -LiteralPath (Join-Path $root ('Start-'+(Split-Path $root -Leaf).Replace(' ','-')+'.ps1'))
+    }
     function Get-Process { if($global:fixtureHostRunning) { return @{Id=54321;Path=$options.RbxportPath} } }
     function Start-Process {
         param($FilePath,$ArgumentList,$WindowStyle,[switch]$Wait,[switch]$PassThru)
         if($FilePath -eq $options.RbxportPath) { $global:fixtureHostRunning=$true;$global:fixtureHostStarts++;return @{Id=54321} }
-        Assert-Startup (-not $Wait -and $WindowStyle -eq 'Hidden' -and $ArgumentList.Contains('-Background -NoWindow') -and $ArgumentList.Contains('-PauseAutomatic')) 'Wait only for the launcher; never wait for persistent descendants'
-        $global:fixtureAddonStarts+=,$ArgumentList
-        $child=[pscustomobject]@{ExitCode=0}
-        $child | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { }
-        $child | Add-Member -MemberType ScriptMethod -Name Refresh -Value { }
-        return $child
+        throw 'Add-on children must use console-free ProcessStartInfo, not shell activation'
     }
     & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic
     & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic
-    Assert-Startup ($global:fixtureHostStarts -eq 1 -and $global:fixtureAddonStarts.Count -eq 4) 'Repeated shortcuts reuse one host and dispatch both companions'
+    Assert-Startup ($global:fixtureHostStarts -eq 1 -and @(Get-Content -LiteralPath $dispatch).Count -eq 4) 'Repeated shortcuts reuse one host and dispatch both console-free companions'
+    Set-Content -LiteralPath (Join-Path $syncRoot 'Start-Playlist-Sync.ps1') -Value 'exit 9'
+    & (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -NoWindow -PauseAutomatic 2>$null
+    Assert-Startup ($LASTEXITCODE -eq 1 -and @(Get-Content -LiteralPath $dispatch).Count -eq 5) 'Failed Sync is reported after Wizard still starts'
     $package=(Get-Content -LiteralPath (Join-Path $sourceRoot 'package.json') -Raw | ConvertFrom-Json).name
     $title=if($package -eq 'rbxport-playlist-sync-addon') { 'Sync' } else { 'Wizard' }
     $runtimeRoot=Join-Path $fixtureRoot 'Runtime fixture'
     New-Item -ItemType Directory -Path (Join-Path $runtimeRoot 'scripts'),(Join-Path $runtimeRoot 'data') -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\Desktop.ps1') -Destination (Join-Path $runtimeRoot 'scripts\Desktop.ps1')
-    Add-Content -LiteralPath (Join-Path $runtimeRoot 'scripts\Desktop.ps1') -Value ("function Find-Playlist${title}Rbxport { return 'fixture-host.exe' }`nfunction Get-Playlist${title}HostProcess { if(`$global:fixtureHostRunning) { return @{Id=54321} } }`nfunction Test-Playlist${title}ServiceListening { return `$global:fixtureServiceStarted }")
+    Add-Content -LiteralPath (Join-Path $runtimeRoot 'scripts\Desktop.ps1') -Value ("function Find-Playlist${title}Rbxport { return 'fixture-host.exe' }`nfunction Get-Playlist${title}HostProcess { if(`$global:fixtureHostRunning) { return @{Id=54321} } }`nfunction Test-Playlist${title}ServiceListening { return `$global:fixtureServiceStarted }`nfunction Connect-Playlist${title}Host { `$global:fixtureAttached=`$true; return @{ready=`$true} }")
     $launcher=Join-Path $runtimeRoot ('Start-Playlist-'+$title+'.ps1')
     Copy-Item -LiteralPath (Join-Path $sourceRoot ('Start-Playlist-'+$title+'.ps1')) -Destination $launcher
     @{dataDirectory=(Join-Path $runtimeRoot 'data')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtimeRoot 'installed.json')
@@ -106,11 +117,33 @@ try {
     $global:fixtureHostRunning=$true
     & $launcher -Background -NoWindow -PauseAutomatic -NodePath Test-Node
     Assert-Startup ($global:fixtureServiceStarted -and $global:fixtureArguments -contains '--host-pid' -and $global:fixtureArguments -contains '54321') 'Service follows exact host process'
+    Assert-Startup ($global:fixtureAttached) 'Background launch verifies visible sidebar attachment before returning'
     function Invoke-RestMethod { param($Uri,$Headers,$TimeoutSec);$expectedEndpoint=if($title -eq 'Sync') { '/api/state' } else { '/api/panel' };Assert-Startup ($Uri.EndsWith($expectedEndpoint)) 'Use the distribution session endpoint';return @{hostPid=11111} }
     $global:fixtureWaits=0
     function Start-Sleep { param($Milliseconds);$global:fixtureWaits++;$global:fixtureServiceStarted=$false }
     & $launcher -Background -NoWindow -NodePath Test-Node
     Assert-Startup ($global:fixtureWaits -eq 1 -and $global:fixtureServiceStarted) 'Quick reopen waits for previous session'
+    # Exercise the generated Windows shortcut, native EXE and child PowerShell together.
+    # The helper is synthetic: it never opens the real host, library or network.
+    @'
+param([switch]$PauseAutomatic,[switch]$NoWindow)
+if(-not $PauseAutomatic -or -not $NoWindow) { exit 6 }
+Add-Type 'using System; using System.Runtime.InteropServices; public class FixtureConsole { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'
+if([FixtureConsole]::GetConsoleWindow() -ne [IntPtr]::Zero) { exit 8 }
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'native-marker.txt') 'console-free'
+'@ | Set-Content -LiteralPath (Join-Path $options.StateDirectory 'Start-Rbxport.ps1')
+    $link=$shell.CreateShortcut($ordinary);$link.Arguments='-NoWindow -PauseAutomatic';$link.Save()
+    $native=New-Object Diagnostics.ProcessStartInfo
+    $native.FileName=$ordinary;$native.UseShellExecute=$true
+    $process=[Diagnostics.Process]::Start($native)
+    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 0) 'Actual generated shortcut dispatches native launcher successfully' } finally { $process.Dispose() }
+    Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'native-marker.txt')) -eq 'console-free') 'Native launcher passes diagnostic flags without allocating a console'
+    Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-status.txt') -Raw).StartsWith('Ready ')) 'Ready is reported after helper success'
+    Set-Content -LiteralPath (Join-Path $options.StateDirectory 'Start-Rbxport.ps1') -Value "Write-Error 'synthetic-startup-failure'; exit 9"
+    $process=[Diagnostics.Process]::Start($native)
+    try { Assert-Startup ($process.WaitForExit(20000) -and $process.ExitCode -eq 1) 'Native launcher returns failure instead of silent success' } finally { $process.Dispose() }
+    Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-status.txt') -Raw).StartsWith('Failed ')) 'Failure status is retained locally'
+    Assert-Startup ((Get-Content (Join-Path $options.StateDirectory 'launch-error.log') -Raw).Contains('synthetic-startup-failure')) 'Error details are captured for diagnosis'
 } finally {
     $resolved=[IO.Path]::GetFullPath($fixtureRoot)
     $tempPrefix=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'

@@ -37,9 +37,22 @@ try {
             if ($PauseAutomatic) { $arguments += ' -PauseAutomatic' }
             # Start-Process -Wait follows descendants, including the persistent Node service.
             # Wait only for the short launcher itself so the companion can start next.
-            $child = Start-Process -FilePath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $arguments -WindowStyle Hidden -PassThru
-            $child.WaitForExit(); $child.Refresh()
-            if ($child.ExitCode -ne 0) { throw 'The add-on could not start; see its private service log' }
+            $start=New-Object Diagnostics.ProcessStartInfo
+            $start.FileName=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $start.Arguments=$arguments; $start.WorkingDirectory=$root
+            $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+            $start.RedirectStandardError=$true
+            $child=New-Object Diagnostics.Process
+            $child.StartInfo=$start
+            try {
+                if(-not $child.Start()) { throw 'Windows could not start the add-on launcher' }
+                $errors=$child.StandardError.ReadToEndAsync()
+                if(-not $child.WaitForExit(90000)) { throw 'The add-on launcher timed out; see its private service log' }
+                if($child.ExitCode -ne 0) {
+                    $detail=if($errors.Wait(1000)) { $errors.Result } else { 'No error details returned' }
+                    throw ('The add-on could not start: '+$detail)
+                }
+            } finally { $child.Dispose() }
         } catch { $failures += $registration.id + ': ' + $_.Exception.Message }
     }
     if ($failures.Count) { throw ($failures -join "`n") }
