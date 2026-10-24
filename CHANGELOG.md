@@ -1,11 +1,14 @@
 # Changelog
 
-## 0.1.2 — 2026-10-23 (unreleased)
+## 0.1.2 — 2026-10-24 (unreleased)
+
+- Verify both installed original shortcuts through native Explorer, both add-on popups and normal close/reopen on rbxport 1.9.0. Repair local packaged-tool AppData redirection; preserve saved data and restore diagnostic pause arguments. Public setup signing remains outstanding.
 
 - Remove obsolete program files during updates only after ownership/checksum verification. Recognize historical setup/packager scripts by public SHA-256 values; retain changed or unknown files and all saved data.
 
 - Add a single-file Windows setup, managed update discovery with saved-data retention, and a separate confirmation for uninstall inside the compact popup. Preserve companion registration, edited files, music and saved data.
-- Require prebuilt trusted, timestamped launcher/script signatures before shortcut integration. Remove local launcher compilation; signing approval is pending and unsigned source integration fails closed.
+- Replace native/PowerShell startup dispatch with the shared JavaScript launcher and verified official Node runtime. Preserve original shortcuts/data paths, independent companion startup, paired sidebar readiness, exact-host lifetime, abandoned-owner recovery and prompt close/reopen. The parent starts minimized; a brief console may appear.
+- Verify official runtime checksums and its OpenJS publisher signature before configuration. This does not sign our JavaScript or establish complete Smart App Control compatibility. Public setup signing and release-validation gates remain.
 - Prepare two-stage provider signing, final signed setup verification and post-signing checksums. Publication requires the exact candidate’s successful Smart App Control validation hash; no signed release has been published.
 
 - Start enabled add-ons concurrently through the shared launcher. Closing the owning rbxport session during startup cancels its pending launchers promptly, releases the launch lock and prevents later clicks from queuing a surprise reopen.

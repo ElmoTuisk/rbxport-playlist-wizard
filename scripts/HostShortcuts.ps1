@@ -23,18 +23,33 @@ function Test-RbxportOwnedShortcut($Entry,$Link) {
     # Explorer can refresh link tracking/timestamps without changing its command.
     return ($Entry.signature -and $Entry.signature -ceq (Get-RbxportShortcutSignature $Link))
 }
-function Initialize-RbxportNativeLauncher([string]$StateDirectory) {
+function Initialize-RbxportJavaScriptLauncher([string]$StateDirectory) {
     $null=Assert-RbxportIntegrationPath $StateDirectory
-    . (Join-Path $PSScriptRoot 'ReleaseTrust.ps1')
     $root=Split-Path $PSScriptRoot -Parent
-    Assert-RbxportReleaseTrust -Root $root -RequireLauncher -Installed
-    $source=Join-Path $root 'release\Start-Rbxport.exe'
-    $executable=Join-Path $StateDirectory 'Start-Rbxport.exe'
+    $manifest=Get-Content -LiteralPath (Join-Path $root 'dependencies.json') -Raw | ConvertFrom-Json
+    $source=Assert-RbxportIntegrationPath (Join-Path $root '.runtime\node.exe')
+    if($manifest.node.url -notmatch '^https://nodejs\.org/dist/' -or $manifest.node.sha256 -notmatch '^[a-f0-9]{64}$' -or -not(Test-Path -LiteralPath $source -PathType Leaf) -or (Get-RbxportShortcutHash $source).ToLowerInvariant() -ne $manifest.node.sha256) { throw 'The private Node.js runtime failed verification. Run setup again before changing shortcuts.' }
+    if(-not $script:RbxportVerifiedNodeSignatures) { $script:RbxportVerifiedNodeSignatures=@{} }
+    if(-not $script:RbxportVerifiedNodeSignatures.ContainsKey($manifest.node.sha256)) {
+        # A caller running PowerShell 7 can leave an incompatible module search path.
+        Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+        $signature=Get-AuthenticodeSignature -LiteralPath $source
+        if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=OpenJS Foundation(?:,|$)') { throw 'The official Node.js publisher signature could not be verified. Windows protection must stay enabled.' }
+        $script:RbxportVerifiedNodeSignatures[$manifest.node.sha256]=$true
+    }
+    $script=Assert-RbxportIntegrationPath (Join-Path $PSScriptRoot 'Start-Rbxport.mjs')
+    if(-not(Test-Path -LiteralPath $script -PathType Leaf)) { throw 'The JavaScript launcher is missing. Run setup again.' }
+    # Shared, checksum-named runtime survives uninstalling either independent add-on.
+    $runtime=Assert-RbxportIntegrationPath (Join-Path $StateDirectory ('runtime\'+$manifest.node.sha256))
+    $executable=Join-Path $runtime 'node.exe'
     New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $runtime -Force | Out-Null
     if(-not(Test-Path -LiteralPath $executable) -or (Get-RbxportShortcutHash $source) -ne (Get-RbxportShortcutHash $executable)) {
         Copy-Item -LiteralPath $source -Destination $executable -Force
     }
-    return $executable
+    $launcher=Join-Path $StateDirectory 'Start-Rbxport.mjs'
+    Copy-Item -LiteralPath $script -Destination $launcher -Force
+    return @{executable=$executable;script=$launcher;arguments=('"'+$launcher+'"')}
 }
 function Set-RbxportHostShortcuts {
     param([string]$StateDirectory,[string]$ProgramsDirectory,[string]$DesktopDirectory,[string]$HostExecutable,[switch]$Disable)
@@ -72,22 +87,21 @@ function Set-RbxportHostShortcuts {
         $plans+=@{path=$path;original=$original}
     }
     New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
-    $nativeLauncher=Initialize-RbxportNativeLauncher $StateDirectory
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-Rbxport.ps1') -Destination $launcher -Force
+    $javascript=Initialize-RbxportJavaScriptLauncher $StateDirectory
     foreach($entry in $plans) {
         New-Item -ItemType Directory -Path (Split-Path $entry.path -Parent) -Force | Out-Null
         $temporary=Join-Path (Split-Path $entry.path -Parent) ('rbxport-'+[Guid]::NewGuid().ToString('N')+'.lnk')
         try {
             $link=$shell.CreateShortcut($temporary)
-            $link.TargetPath=$nativeLauncher
-            $link.Arguments=''; $link.WorkingDirectory=$StateDirectory; $link.WindowStyle=1
+            $link.TargetPath=$javascript.executable
+            $link.Arguments=$javascript.arguments; $link.WorkingDirectory=$StateDirectory; $link.WindowStyle=7
             $link.IconLocation=$HostExecutable+',0'; $link.Description='Open rbxport with enabled Playlist Sync and Playlist Wizard add-ons'
             $link.Save(); Move-Item -LiteralPath $temporary -Destination $entry.path -Force
         } finally { if(Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
         $entry.hash=Get-RbxportShortcutHash $entry.path
         $entry.signature=Get-RbxportShortcutSignature ($shell.CreateShortcut($entry.path))
     }
-    @{schema=3;entries=$plans} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $recordPath -Encoding UTF8
+    @{schema=4;entries=$plans} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $recordPath -Encoding UTF8
     if(Test-Path -LiteralPath $legacyPath) { Remove-Item -LiteralPath $legacyPath }
 }
 function Remove-RbxportAddonShortcuts {

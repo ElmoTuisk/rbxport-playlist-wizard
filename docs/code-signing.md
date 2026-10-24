@@ -1,6 +1,6 @@
 # Code signing policy
 
-Trusted publisher signing is **pending**. No certificate or SignPath Foundation approval has been obtained. The interim unsigned releases are not the final startup fix. Keep Smart App Control enabled.
+Trusted setup publisher signing is **unresolved**. A SignPath Foundation application was declined for insufficient established public visibility. No certificate has been obtained. The development startup path instead uses our JavaScript directly through the checksum-verified and publisher-signed official Node.js runtime. This removes the custom startup EXE, but does not sign our code, make an unsigned setup trusted or establish full Smart App Control compatibility. Keep protection enabled.
 
 Elmo Tuisk ([ElmoTuisk](https://github.com/ElmoTuisk)) maintains these independent open-source add-ons and is the proposed author, reviewer and release approver. GitHub and signing-service MFA must be verified during onboarding; this document does not attest that account setting. External changes require review. Each production signing request requires maintainer approval against its tested source commit.
 
@@ -8,13 +8,13 @@ The intended experience is one setup EXE per add-on, the existing **rbxport** De
 
 ## Signing and publication
 
-`release-signing.json` deliberately has pending status and no approved publisher. Production integration refuses to change shortcuts in that state. After provider verification, review the exact certificate subject into that policy; never substitute a self-signed certificate, install a trust root or change Windows application-control settings.
+`release-signing.json` deliberately has pending status and no approved publisher. The public setup build/publication gates still refuse unsigned production releases. JavaScript startup configuration independently verifies the official Node checksum and publisher signature; it needs no certificate for a custom launcher because none is built. A shortcut starts a minimized Node parent, then hidden workers, so a brief minimized console is possible. Installation/configuration still use PowerShell. After any future provider verification, review the exact certificate subject into that policy; never substitute a self-signed certificate, install a trust root or change Windows application-control settings.
 
 The two repositories use the same staged process:
 
 1. Pass the Node 24 suites on Windows and Linux. A matching version tag is required.
-2. `Build-ReleasePayload.ps1` creates an **unsigned signing input**, compiling the public launcher source on the build server. It is not an end-user download and is not executed during this build.
-3. The configured signing provider signs our launcher and all distributed root/scripts PowerShell files, with timestamps. Upstream runtime/tools keep their original integrity checks and are never re-signed as our own software. Source archives contain no runtime binaries.
+2. `Build-ReleasePayload.ps1` stages public source, including the JavaScript launcher, as **unsigned signing input**. It compiles no startup EXE. It is not an end-user download and is not executed during this build.
+3. The configured signing provider signs all distributed root/scripts PowerShell files, with timestamps. The JavaScript is included in the signed setup payload; it is not represented as individually Authenticode-signed. Upstream runtime/tools keep their original integrity checks and are never re-signed as our own software. Source archives contain no runtime binaries.
 4. `Build-Installer.ps1 -PayloadDirectory <signed-input>` verifies the approved Windows publisher signatures before embedding the payload. It builds the outer setup, which is signed in a second request. No launcher is compiled on the user's computer.
 5. Verify the final setup's signature and embedded payload. Compute SHA-256 checksums **after** signing. Retain the signed candidate as a workflow artifact.
 6. Download that exact candidate onto a Windows machine with Smart App Control **On**. Record its SHA-256 and the checks below. Set the `verified-windows-release` environment's `SAC_VALIDATED_SETUP_SHA256` variable to that exact hash only after success. Only then approve/re-run publication. A newly signed build with a different hash needs a new check.

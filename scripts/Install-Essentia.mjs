@@ -25,10 +25,11 @@ export function extractRuntime(archive,manifest) {
   if(files.size!==Object.keys(manifest.files).length)throw Error('Essentia archive is missing required files');
   return files;
 }
-export async function installEssentia({directory=join(root,'.runtime','essentia'),archiveFile=join(root,'.install-cache','essentia.js-0.1.3.tgz'),fetchImpl=fetch}={}) {
+export async function installEssentia({directory=join(root,'.runtime','essentia'),archiveFile=join(root,'.install-cache','essentia.js-0.1.3.tgz'),fetchImpl=fetch,offline=false}={}) {
   const manifest=await essentiaManifest();let archive;
   try{archive=await readFile(archiveFile);}catch(error){if(error.code!=='ENOENT')throw error;}
   if(!archive) {
+    if(offline)throw Error('Verified cached Essentia archive is unavailable. Offline setup will not download it.');
     const url=new URL(manifest.url);
     if(url.protocol!=='https:'||url.hostname!=='registry.npmjs.org')throw Error('Unexpected Essentia distribution source');
     const response=await fetchImpl(url,{redirect:'error',signal:AbortSignal.timeout(60000)});
@@ -43,6 +44,6 @@ export async function installEssentia({directory=join(root,'.runtime','essentia'
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const value=name=>{const i=process.argv.indexOf(name);return i<0?undefined:process.argv[i+1];};
-  try{const result=await installEssentia({directory:value('--directory'),archiveFile:value('--archive')});console.log(`Essentia.js ${result.version} verified and ready for local analysis.`);}
+  try{const result=await installEssentia({directory:value('--directory'),archiveFile:value('--archive'),offline:process.argv.includes('--offline')});console.log(`Essentia.js ${result.version} verified and ready for local analysis.`);}
   catch{console.error('Essentia setup failed: check internet access or the pinned archive checksums. No analysis runtime was executed.');process.exitCode=1;}
 }

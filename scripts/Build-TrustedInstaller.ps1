@@ -32,7 +32,7 @@ try {
         foreach($entry in $archive.Entries) {
             $name=$entry.FullName.Replace('\','/')
             if($name -eq $entryPoint) { $hasEntry=$true }
-            if($name -eq 'release/Start-Rbxport.exe') { $hasLauncher=$true;continue }
+            if($name -eq 'scripts/Start-Rbxport.mjs') { $hasLauncher=$true }
             if($name -match '(?i)(\.local-data|\.tools|\.runtime|\.sqlite|\.dpapi|launch-url|cookies|installed\.json|LOCAL_WORKSPACE|\.(mp3|m4a|flac|opus|wav|exe|dll|log)$)' -or $name -match '(^|/)\.\.(/|$)') { throw 'Private or unexpected executable payload entry refused.' }
         }
         if(-not $hasEntry -or -not $hasLauncher) { throw 'Signed installer payload is incomplete.' }

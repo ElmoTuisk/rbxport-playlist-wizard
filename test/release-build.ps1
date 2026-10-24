@@ -5,10 +5,11 @@ try {
     New-Item -ItemType Directory -Path $fixture | Out-Null
     $stage=Join-Path $fixture 'unsigned-payload'
     & (Join-Path $repo 'Build-ReleasePayload.ps1') -Destination $stage
-    $exe=Get-Item -LiteralPath (Join-Path $stage 'release\Start-Rbxport.exe')
     $package=Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json
     $title=if($package.name -eq 'rbxport-playlist-sync-addon') { 'Playlist Sync' } else { 'Playlist Wizard' }
-    if($exe.VersionInfo.ProductName -ne ($title+' for rbxport') -or $exe.VersionInfo.ProductVersion -ne ($package.version+'.0')) { throw 'Launcher metadata does not match its signing restrictions.' }
+    if(Test-Path -LiteralPath (Join-Path $stage 'release\Start-Rbxport.exe')) { throw 'Staging must not build a custom startup EXE.' }
+    $javascript='scripts\Start-Rbxport.mjs'
+    if([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $repo $javascript))) -cne [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $stage $javascript)))) { throw 'Staging changed JavaScript launcher bytes.' }
     $entry='Install-'+$title.Replace(' ','-')+'.ps1'
     if([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $repo $entry))) -cne [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $stage $entry)))) { throw 'Staging changed program script bytes.' }
     $output=Join-Path $fixture 'must-not-publish.exe'

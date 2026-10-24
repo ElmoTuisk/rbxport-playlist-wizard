@@ -32,10 +32,13 @@ function Set-RbxportAddonStartup {
     $addon=switch($name) { 'rbxport-playlist-sync-addon' { 'Playlist-Sync' }; 'rbxport-playlist-wizard-addon' { 'Playlist-Wizard' }; default { throw 'Unknown rbxport add-on. Startup was not changed.' } }
     if(-not(Test-Path -LiteralPath (Join-Path $Root ('Start-'+$addon+'.ps1')))) { throw 'Invalid installed launcher.' }
     $statePath=Join-Path $StateDirectory 'startup.json'
-    $mutex=New-Object Threading.Mutex($false, 'Local\rbxport-addons-startup')
+    $lockHash=[Security.Cryptography.SHA256]::Create()
+    try { $lockIdentity=[BitConverter]::ToString($lockHash.ComputeHash([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($StateDirectory).ToLowerInvariant()))).Replace('-','') }
+    finally { $lockHash.Dispose() }
+    $mutex=New-Object Threading.Mutex($false, ('Local\rbxport-addons-startup-'+$lockIdentity))
     $locked=$false
     try {
-        $locked=$mutex.WaitOne(10000)
+        try { $locked=$mutex.WaitOne(10000) } catch [Threading.AbandonedMutexException] { $locked=$true }
         if(-not $locked) { throw 'Another add-on is configuring startup. Try again shortly.' }
         $saved=if(Test-Path -LiteralPath $statePath) { Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json } else { $null }
         $previous=if($saved) { $saved.previousPort } else { Get-RbxportUserPort }

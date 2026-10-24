@@ -14,13 +14,13 @@ try {
     foreach ($dir in @('src','public','scripts','docs')) { New-Item -ItemType Directory -Path (Join-Path $source $dir) | Out-Null; Set-Content -LiteralPath (Join-Path $source "$dir\fixture.txt") 'program fixture' }
     Copy-Item -LiteralPath (Join-Path $repo 'scripts\ReleaseTrust.ps1') -Destination (Join-Path $source 'scripts')
     Copy-Item -LiteralPath (Join-Path $repo 'release-signing.json') -Destination $source
+    Copy-Item -LiteralPath (Join-Path $repo 'scripts\Start-Rbxport.mjs') -Destination (Join-Path $source 'scripts')
     Set-Content -LiteralPath (Join-Path $source 'scripts\Install-Essentia.mjs') -Value "import fs from 'node:fs';import path from 'node:path';const d=process.argv[process.argv.indexOf('--directory')+1];fs.mkdirSync(d,{recursive:true});for(const f of ['essentia-wasm.cjs','essentia-core.cjs','LICENSE-Essentia.txt'])fs.writeFileSync(path.join(d,f),'fixture');"
     Set-Content -LiteralPath (Join-Path $source 'src\server.mjs') '// synthetic service; never executed'
     foreach ($name in @('README.md','AGENTS.md','CHANGELOG.md','LICENSE','LICENSE-AGPL-3.0.txt','THIRD_PARTY.md','manifest.json','Start-Playlist-Wizard.ps1','Stop-Playlist-Wizard.ps1','Launch-Playlist-Wizard.cmd','Configure-Rbxport-Startup.ps1','Uninstall-Playlist-Wizard.ps1')) { Set-Content -LiteralPath (Join-Path $source $name) 'fixture' }
     Copy-Item -LiteralPath (Join-Path $repo 'Install-Playlist-Wizard.ps1') -Destination $source
     Copy-Item -LiteralPath (Join-Path $repo 'scripts\Installation.ps1') -Destination (Join-Path $source 'scripts')
     Copy-Item -LiteralPath (Join-Path $repo 'scripts\obsolete-program-files.json') -Destination (Join-Path $source 'scripts')
-    Copy-Item -LiteralPath (Join-Path $repo 'scripts\RbxportLauncher.cs') -Destination (Join-Path $source 'scripts')
     Set-Content -LiteralPath (Join-Path $source 'scripts\Desktop.ps1') "function Find-PlaylistWizardRbxport { return 'fixture-rbxport.exe' }`nfunction Test-PlaylistWizardServiceListening { return `$false }"
     @{name='rbxport-playlist-wizard-addon';version='0.10.5'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $source 'package.json')
     Copy-Item -LiteralPath $NodePath -Destination (Join-Path $cache 'node.exe')
@@ -46,9 +46,13 @@ try {
     try { & (Join-Path $source 'Install-Playlist-Wizard.ps1') -InstallDirectory $blockedTarget -CacheDirectory $cache -NoShortcuts -NoLaunch -NoRegistry -CancellationFile $cancelFile -StatusFile $statusFile } catch { $cancelled=$_.Exception -is [OperationCanceledException] }
     Assert-Install ($cancelled -and -not (Test-Path -LiteralPath $blockedTarget)) 'Cancelling before setup must leave the existing installation untouched'
     Assert-Install ((Get-Content -LiteralPath $statusFile -Raw).StartsWith('cancelled')) 'Cancellation must be reported without a raw PowerShell stack'
+    $offlineTarget=Join-Path $fixture 'offline-refusal';$offlineCache=Join-Path $fixture 'empty-cache';$offlineRejected=$false
+    try { & (Join-Path $source 'Install-Playlist-Wizard.ps1') -InstallDirectory $offlineTarget -CacheDirectory $offlineCache -NoShortcuts -NoLaunch -NoRegistry -Offline } catch { $offlineRejected=$_.Exception.Message -match 'Offline setup will not download' }
+    Assert-Install ($offlineRejected -and -not(Test-Path -LiteralPath (Join-Path $offlineTarget 'src\server.mjs'))) 'Offline setup must refuse a missing cached dependency before copying program files'
     & (Join-Path $source 'Install-Playlist-Wizard.ps1') -InstallDirectory $target -DataDirectory $data -CacheDirectory $cache -NoShortcuts -NoLaunch -NoRegistry
     $record = Get-Content -LiteralPath (Join-Path $target 'installed.json') -Raw | ConvertFrom-Json
     Assert-Install ($record.product -eq 'rbxport-playlist-wizard' -and $record.files.Count -gt 10) 'Installation receipt missing'
+    Assert-Install (@($record.files | Where-Object { $_.path.Replace('\','/') -eq 'scripts/Start-Rbxport.mjs' }).Count -eq 1) 'The JavaScript launcher must be included in managed installation/update ownership'
     # The next update must remove only unchanged files retired by the previous version.
     foreach($name in @('retired.mjs','retired-edited.mjs')) {
         Set-Content -LiteralPath (Join-Path $target ('src\'+$name)) '// retired fixture'

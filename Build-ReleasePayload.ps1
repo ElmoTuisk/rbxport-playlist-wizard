@@ -6,8 +6,6 @@ $title=switch($package.name) { 'rbxport-playlist-sync-addon' { 'Playlist Sync' }
 if($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid package version.' }
 $Destination=[IO.Path]::GetFullPath($Destination)
 if(Test-Path -LiteralPath $Destination) { throw 'Choose a new, empty staging directory.' }
-$compiler=Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-if(-not(Test-Path -LiteralPath $compiler)) { throw 'Build on Windows x64 with .NET Framework installed.' }
 $temporary=Join-Path ([IO.Path]::GetTempPath()) ('rbxport-payload-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
@@ -15,12 +13,7 @@ try {
     & (Join-Path $PSScriptRoot 'Package-Addon.ps1') -Destination $archive
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::ExtractToDirectory($archive,$Destination)
-    $release=Join-Path $Destination 'release'
-    New-Item -ItemType Directory -Path $release | Out-Null
-    $metadata=Join-Path $temporary 'Version.cs'
-    ('using System.Reflection; [assembly:AssemblyVersion("'+$version+'.0")] [assembly:AssemblyFileVersion("'+$version+'.0")] [assembly:AssemblyProduct("'+$title+' for rbxport")] [assembly:AssemblyCompany("Elmo Tuisk")] [assembly:AssemblyTitle("rbxport add-on launcher")]') | Set-Content -LiteralPath $metadata -Encoding UTF8
-    & $compiler /nologo /target:winexe /platform:x64 /optimize+ ('/out:'+(Join-Path $release 'Start-Rbxport.exe')) /reference:System.Windows.Forms.dll (Join-Path $PSScriptRoot 'scripts\RbxportLauncher.cs') $metadata
-    if($LASTEXITCODE -ne 0) { throw 'Launcher compilation failed.' }
+    if(-not(Test-Path -LiteralPath (Join-Path $Destination 'scripts\Start-Rbxport.mjs'))) { throw 'JavaScript launcher is missing from the payload.' }
     Write-Output 'Created UNSIGNED signing input. Do not install or distribute it as a release.'
 } finally {
     $full=[IO.Path]::GetFullPath($temporary)

@@ -55,6 +55,7 @@ test('pinned Essentia setup uses cached verified files, survives update and reje
   await verifyEssentia(runtimeDir);await writeFile(join(runtimeDir,'essentia-core.cjs'),'tampered');await assert.rejects(verifyEssentia(runtimeDir),/checksum/);
   const damaged=Buffer.from(archive);damaged[10]^=1;await writeFile(cached,damaged);await assert.rejects(installEssentia({directory:runtimeDir,archiveFile:cached,fetchImpl:forbidden}),/checksum/);
   await assert.rejects(verifyEssentia(join(dir,'missing')),/unavailable/);
+  await assert.rejects(installEssentia({directory:runtimeDir,archiveFile:join(dir,'absent.tgz'),fetchImpl:forbidden,offline:true}),/Offline setup will not download/);
 });
 
 test('real Essentia worker analyzes synthetic pulse audio, resists gain changes and preserves source bytes',{skip:!runtime.available||!hasFFmpeg,timeout:30000},async t=>{

@@ -9,7 +9,7 @@ try {
     Set-Content -LiteralPath (Join-Path $fixture 'scripts\fixture.ps1') '# fixture'
     @{name='rbxport-playlist-sync-addon'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixture 'package.json')
     foreach($path in @('Start-Playlist-Sync.ps1','Stop-Playlist-Sync.ps1','Uninstall-Playlist-Sync.ps1','Configure-Rbxport-Startup.ps1','scripts\Desktop.ps1','scripts\HostShortcuts.ps1','scripts\Installation.ps1','scripts\ReleaseTrust.ps1','scripts\Start-Rbxport.ps1','scripts\Startup.ps1')) { Set-Content -LiteralPath (Join-Path $fixture $path) '# fixture' }
-    Set-Content -LiteralPath (Join-Path $fixture 'release\Start-Rbxport.exe') 'synthetic binary; never executed'
+    Set-Content -LiteralPath (Join-Path $fixture 'scripts\Start-Rbxport.mjs') '// synthetic JavaScript; never executed'
     $rejected=$false;try { Assert-RbxportReleaseTrust $fixture -RequireLauncher } catch { $rejected=$_.Exception.Message -match 'pending' }
     Assert-Trust $rejected 'Pending publisher policy must refuse integration'
     @{schema=1;status='approved';publisherSubjects=@('CN=Fixture Publisher')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixture 'release-signing.json')
@@ -32,7 +32,7 @@ try {
     Assert-Trust $rejected 'A missing timestamp must be refused'
     $script:timestamp=$true;$script:verified=@()
     Assert-RbxportReleaseTrust $fixture -RequireLauncher
-    Assert-Trust ('fixture.ps1' -in $script:verified -and 'Start-Rbxport.exe' -in $script:verified) 'Validate scripts and the prebuilt launcher'
+    Assert-Trust ('fixture.ps1' -in $script:verified -and 'Start-Playlist-Sync.ps1' -in $script:verified) 'Validate setup scripts while the JavaScript launcher is included in the signed payload'
     $script:verified=@()
     Set-Content -LiteralPath (Join-Path $fixture 'Install-Legacy.ps1') '# legacy fixture'
     Assert-RbxportReleaseTrust $fixture -RequireLauncher -Installed
@@ -41,9 +41,9 @@ try {
     $rejected=$false;try { Assert-RbxportReleaseTrust $fixture -RequireLauncher -Installed } catch { $rejected=$true }
     Assert-Trust $rejected 'Every runtime entry is required'
     Set-Content -LiteralPath (Join-Path $fixture 'Stop-Playlist-Sync.ps1') '# fixture'
-    Remove-Item -LiteralPath (Join-Path $fixture 'release\Start-Rbxport.exe')
+    Remove-Item -LiteralPath (Join-Path $fixture 'scripts\Start-Rbxport.mjs')
     $rejected=$false;try { Assert-RbxportReleaseTrust $fixture -RequireLauncher } catch { $rejected=$true }
-    Assert-Trust $rejected 'Missing prebuilt launcher must never trigger local compilation'
+    Assert-Trust $rejected 'A missing JavaScript launcher must fail payload validation'
     Write-Output 'Release trust checks passed'
 } finally {
     $full=[IO.Path]::GetFullPath($fixture)

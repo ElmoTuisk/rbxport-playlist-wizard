@@ -2,7 +2,7 @@
 
 An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental development version 0.1.2 (unreleased) · Windows x64 · Node.js 24.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
 
-**Startup fix pending:** Smart App Control can block the unsigned helper used by [v0.1.1](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases/tag/v0.1.1), now marked as a pre-release. Windows/Linux CI passed, but a compatible startup correction has not been released. Keep Windows protection enabled.
+**Startup correction in development:** A shared JavaScript launcher replaces the unsigned helper used by [v0.1.1](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases/tag/v0.1.1). It uses the unchanged, checksum-verified and publisher-signed official Node.js runtime. A signed runtime does not sign our JavaScript or prove complete Smart App Control compatibility. A new correction has not been released. Keep Windows protection enabled.
 
 ## What works in this development build
 
@@ -34,10 +34,12 @@ Automatic attachment preserves the rbxport shortcut name and executable icon, en
 
 Updates remove obsolete program files only when their previous ownership and checksums match; recognized legacy setup scripts are also removed. Edited files, unknown files and saved data are retained.
 
-Close rbxport before updating. Setup stops an idle older Wizard service belonging to that installation; active work and unrelated processes block updates. The EXE’s Cancel/close requests safe cancellation. Source installation remains available with `Install-Playlist-Wizard.cmd`; source builds cannot enable shortcuts without approved signed release files. No automatic updater is installed.
+Close rbxport before updating. Setup stops an idle older Wizard service belonging to that installation; active work and unrelated processes block updates. The EXE’s Cancel/close requests safe cancellation. Source installation remains available with `Install-Playlist-Wizard.cmd`; JavaScript startup verifies the official Node runtime before configuring shortcuts. No automatic updater is installed.
 
 
-The development installer requires a prebuilt launcher and PowerShell scripts signed by an approved, trusted publisher. It does not compile a launcher on the user’s computer. Trusted signing approval is pending, and unsigned source builds refuse shortcut integration.
+The development shortcut targets official Node.js directly with `scripts/Start-Rbxport.mjs`. A minimized, short-lived parent starts a hidden worker and both independent services. A brief minimized console may be visible. PowerShell remains for installation/configuration and a fixed read-only host inventory command; normal startup dispatches no PowerShell script files and builds no custom EXE. Startup errors open private diagnostic text in Windows Notepad. The shared verified runtime survives removing either add-on. Public setup EXE signing and exact-candidate Windows checks remain separate, unresolved release requirements.
+
+On 24 October, native Explorer launches of the installed Desktop and Start Menu shortcuts verified both add-ons, both popups and normal close/reopen on rbxport 1.9.0, with saved state unchanged. Packaged-tool AppData redirection was detected and repaired; final commands use physical user files. This verifies local startup, with public setup and clean-machine validation still outstanding. [Verification details](docs/validation.md).
 
 Remove a managed installation through **Playlist Wizard → Installation → Uninstall…**, review the confirmation and choose **Uninstall Playlist Wizard**. Finish or cancel analysis/creation first. The helper removes only matching owned program files and its own startup registration. Music, playlists, saved settings, edited/unknown files and Playlist Sync remain. Windows **Installed apps** offers the same uninstall. Updating an older copy with the EXE adds this option.
 
