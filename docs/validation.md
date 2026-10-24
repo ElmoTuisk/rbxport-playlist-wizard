@@ -1,5 +1,15 @@
 # Validation record
 
+## Single-file JavaScript setup — 24 October 2026
+
+The user accepted official Node.js 24+ as a prerequisite for a single `.mjs` setup download. Both GitHub READMEs now show that requirement and exact command. The installer embeds this add-on's public payload and its setup engine/Windows adapter, verifies pinned tools and Essentia files, preserves saved-data locations, configures the regular host shortcuts and creates compatible managed receipts. Source ZIP extraction and a custom setup EXE are not required. This supersedes the prior mandatory signed-EXE plan; optional EXE builds keep their own signing gates.
+
+The full local combined Windows/Node 24 run passed **281/281 tests without skips** in 16.98 seconds, with real synthetic audio/Essentia/DPAPI and external fetches blocked. The subsequent installer-only run passed **26/26 checks** after adding partial-shortcut recovery and paired idle-only Wizard update cases. Tests cover each add-on independently, both install orders, custom folders and retained data/music/edits, invalid inputs/trust/downloads, active/foreign service refusal, locks/cancellation and transactional recovery. Actual Windows signature checks, ZIP extraction, shortcuts and compatible managed removal used only isolated fixture folders. Two same-platform builds matched exactly. The generated bundle verified and showed help without source dependencies, including a Windows Internet-origin file marker, and its own engine completed fixture installation.
+
+The real installed add-ons and user security settings were unchanged. No live host launch/restart, music acquisition/analysis, draft generation, playlist write or USB action was performed. Full fresh-machine interactive setup and universal Smart App Control compatibility remain unverified. Tag publication now waits for both CI platforms and supplies `.mjs`, public source and checksums; older EXE/signing records below are historical.
+
+The final publication-candidate full Windows run passed **285/285 tests, no failures or skips**, in 16.40 seconds, including both distributions' final 13 installer cases.
+
 ## JavaScript startup simplification — 24 October 2026, unreleased
 
 Wizard carries the same standalone JavaScript launcher as Sync. Shortcuts target the unchanged, checksum-verified and OpenJS-signed official Node runtime; no custom native startup EXE or PowerShell script file is dispatched during normal startup. A fixed read-only process inventory still uses PowerShell, as do installation/configuration. The minimized parent may briefly be visible. No trust-store or application-control settings are changed, and the runtime's signature does not sign our JavaScript.
