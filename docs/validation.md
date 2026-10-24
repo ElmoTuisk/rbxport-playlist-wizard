@@ -10,6 +10,10 @@ The real installed add-ons and user security settings were unchanged. No live ho
 
 The final publication-candidate full Windows run passed **285/285 tests, no failures or skips**, in 16.40 seconds, including both distributions' final 13 installer cases.
 
+Published [Wizard v0.1.2](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases/tag/v0.1.2) and [Sync v0.11.5](https://github.com/ElmoTuisk/rbxport-playlist-sync/releases/tag/v0.11.5) as the latest stable releases after both platforms passed their [Wizard](https://github.com/ElmoTuisk/rbxport-playlist-wizard/actions/runs/40102997056) and [Sync](https://github.com/ElmoTuisk/rbxport-playlist-sync/actions/runs/40103048401) release workflows. Each release provides one `.mjs` setup, public source ZIP and checksums, with the Node.js 24 prerequisite in its release notes.
+
+Downloaded all published assets and verified GitHub digests and `SHA256SUMS.txt`. Both downloaded setups passed `--verify` without installation. Wizard's 279,019-byte setup contains 52 verified program files and its source ZIP contains 85 files; Sync's 478,504-byte setup contains 62 program files and its source ZIP contains 106 files. Both source archives passed the private-data/compiled-runtime path scan. These are public-artifact checks; full fresh-machine interactive setup remains unverified.
+
 ## JavaScript startup simplification — 24 October 2026, unreleased
 
 Wizard carries the same standalone JavaScript launcher as Sync. Shortcuts target the unchanged, checksum-verified and OpenJS-signed official Node runtime; no custom native startup EXE or PowerShell script file is dispatched during normal startup. A fixed read-only process inventory still uses PowerShell, as do installation/configuration. The minimized parent may briefly be visible. No trust-store or application-control settings are changed, and the runtime's signature does not sign our JavaScript.
