@@ -1,8 +1,13 @@
 # Playlist Wizard for rbxport
 
-An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental version 0.1.2 · Windows x64 · Node.js 24 or newer required for setup.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
+> [!IMPORTANT]
+> **Install Node.js 24 or newer before running this add-on's setup.**
+>
+> **[Download Node.js for Windows](https://nodejs.org/en/download)**
+>
+> Install it once for both Playlist Sync and Playlist Wizard, then open a new terminal and follow the setup steps below. Run the downloaded `.mjs` setup with `node`; double-clicking it may open an editor.
 
-**Install Node.js first:** Install the official [Node.js runtime](https://nodejs.org/en/download), version 24 or newer. Download the single **`.mjs` setup file** and run it with Node; double-clicking it may open an editor. There is no source ZIP to unpack. Setup installs a verified private runtime for later regular rbxport launches.
+An independent, local DJ-set builder with the same compact sidebar/popup style as Playlist Sync. **Experimental version 0.1.2 · Windows x64 · Node.js 24 or newer required for setup.** It has its own service, pairing token, installation and saved data. Both add-ons can start through the original rbxport shortcut; Playlist Sync is not required.
 
 ## What works in this development build
 
@@ -18,7 +23,7 @@ Generation and analysis do not download music, import files, rewrite tags, chang
 
 ## Setup and use
 
-The main download is one **`playlist-wizard-0.1.2-windows-setup.mjs`**, alongside public source and checksums after Windows/Linux CI. Windows x64, official Node.js 24 or newer, compatible rbxport and internet are required. Administrator access is not required. [Distribution and signing details](docs/code-signing.md).
+The main download is one **`playlist-wizard-0.1.2-windows-setup.mjs`**, alongside public source and checksums after Windows/Linux CI. Windows x64, official Node.js 24 or newer, compatible rbxport and internet are required. Administrator access is not required. You do not need to unpack the source ZIP. Setup installs a verified private runtime for later regular rbxport launches. [Distribution and signing details](docs/code-signing.md).
 
 1. Install [Node.js 24 or newer](https://nodejs.org/en/download), then download the `.mjs` setup from [GitHub Releases](https://github.com/ElmoTuisk/rbxport-playlist-wizard/releases/latest).
 2. Close rbxport. Open a terminal in the download folder and run `node .\playlist-wizard-0.1.2-windows-setup.mjs`. Review the folders and enter **y**. Setup retains the existing saved-data folder, verifies pinned Node.js/FFmpeg/Essentia.js downloads and connects the regular rbxport shortcuts. For an unregistered portable copy, add `--existing-directory "C:\path\to\installed-addon"`.
