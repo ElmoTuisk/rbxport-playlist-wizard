@@ -1,7 +1,9 @@
 // Existing rbxport commands only. No direct music-database access.
+import {cueReviewedTrack} from './host-player.mjs';
 export function hostCommandSource(method,args) {
   const methods={
     identity: `return {libraryId};`,
+    cue: `return (${cueReviewedTrack.toString()})(a,invoke,libraryId,device);`,
     info: `return {libraryId,playlists:(await invoke('playlist_tree')).filter(p=>p.kind==='playlist')};`,
     devices: `const devices=await invoke('list_devices');const result=[];for(const d of devices){if(!d.volumeId)continue;result.push({...d,libraries:await invoke('device_libraries',{path:d.path})});}return result;`,
     open: `const source=a.device?{kind:'device',path:device.path,format:a.device.format,playlist:a.playlistId||'0'}:a.playlistId?{kind:'playlist',id:a.playlistId}:{kind:'collection'};const view=await invoke('open_view',{spec:{source,sort:'trackNo',descending:false,query:''}});return {...view,libraryId};`,
@@ -10,8 +12,9 @@ export function hostCommandSource(method,args) {
     add: `if(a.device)return invoke('device_playlist_edit',{path:device.path,format:a.device.format,edit:{kind:'add',playlist:a.playlistId,tracks:a.ids,duplicates:false}});return invoke('add_tracks_to_playlist',{playlist:a.playlistId,tracks:a.ids,allowDuplicates:false});`
   };
   if(!Object.hasOwn(methods,method))throw Error('Unsupported Playlist Wizard host operation');
-  if(['create','add'].includes(method)&&!args.libraryId)throw Error('Writes require a pinned library identity');
+  if(['create','add','cue'].includes(method)&&!args.libraryId)throw Error('Writes and player loads require a pinned library identity');
+  if(method==='cue'&&(typeof args.trackId!=='string'||!args.trackId||args.trackId.length>4096||typeof args.path!=='string'||!args.path||!Number.isFinite(args.duration)||args.duration<=0))throw Error('Invalid reviewed track');
   if(args.device&&(!args.device.volumeId||!args.device.path||!['deviceLibrary','oneLibrary'].includes(args.device.format)))throw Error('Invalid pinned USB identity');
-  const write=['create','add'].includes(method);
+  const write=['create','add','cue'].includes(method);
   return `(async()=>{const a=${JSON.stringify(args)};const invoke=window.__TAURI_INTERNALS__.invoke;let drives;try{drives=await invoke('database_drives');}catch{throw Error('This rbxport build lacks the required library API (tested source contract: 1.9.0).');}const active=drives.find(d=>d.current);if(!active?.masterDb)throw Error('Cannot establish current library identity');const libraryId=active.masterDb.replaceAll('\\\\','/').toLowerCase();if(a.libraryId&&a.libraryId!==libraryId)throw Error('Wrong library; operation refused');let device;if(a.device){const devices=await invoke('list_devices');device=devices.find(d=>d.volumeId===a.device.volumeId&&d.path===a.device.path);if(!device)throw Error('USB disconnected or identity changed');const libraries=await invoke('device_libraries',{path:device.path});if(!libraries.some(l=>l.format===a.device.format))throw Error('USB library format is no longer available');}const leaseKey='__rbxportAddonWriteLease';if(${write}){if(window[leaseKey])throw Error('Another add-on is writing; wait and retry');window[leaseKey]={owner:'playlist-wizard'};}try{return await(async()=>{${methods[method]}})();}finally{if(${write})delete window[leaseKey];}})()`;
 }

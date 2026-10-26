@@ -51,10 +51,11 @@ export async function startServer({port=43823,dataDir=join(homedir(),'.rbxport-p
       catch(error) { uninstalling=false;throw error; }
     }
     if(name==='connect')return syncHost();
-    if(name==='cancel'){wizard.cancel();return {ok:true};}
+    if(name==='cancel'){if(wizard.active==='cue')throw Error('Wait for the player load to finish; a dispatched host load cannot be cancelled.');wizard.cancel();return {ok:true};}
     if(!connected)throw Error(connectionError||'Connect a compatible rbxport library first');
     if(name==='options'){if(wizard.active)throw Error('Wait for the current operation');return wizard.options();}
     if(name==='generate')return wizard.start('generate',{...args,...(demo?{recipe:{...args.recipe,analyze:false},overrides:demoEnergy()}:{} )});
+    if(name==='cue'){if(demo)throw Error('Example data only; no live song can be loaded');return wizard.start('cue',args);}
     if(name==='create'){if(demo)throw Error('Example data only; no live playlist can be created');return wizard.start('create',args);}
     throw Error('Unsupported Playlist Wizard action');
   }

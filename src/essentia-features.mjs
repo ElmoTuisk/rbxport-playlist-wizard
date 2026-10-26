@@ -24,7 +24,7 @@ export function keySummary(result) {
   const strength=finite(result.strength)?result.strength:null;
   return {key,strength,acceptedKey:key&&strength>=0.6?key:null,profile:'edma'};
 }
-export function extractSection(e,samples,{tonal=false}={}) {
+export function extractSection(e,samples,{tonal=false,estimateBpm=true,estimateKey=true}={}) {
   const issues=[];let peak=0;
   for(const value of samples){if(!finite(value))throw Error('Invalid decoded audio');peak=Math.max(peak,Math.abs(value));}
   const duration=samples.length/44100;
@@ -39,11 +39,11 @@ export function extractSection(e,samples,{tonal=false}={}) {
   try {
     dance=measure('Danceability',()=>e.Danceability(vector,8800,310,44100,1.1));
     onsets=measure('Onsets',()=>e.OnsetRate(vector));
-    if(tonal&&duration>=8)rhythm=measure('Beat tracking',()=>{
+    if(tonal&&estimateBpm&&duration>=8)rhythm=measure('Beat tracking',()=>{
       const result=e.RhythmExtractor2013(vector,208,'multifeature',60);
       try{return rhythmSummary(result,Array.from(e.vectorToArray(result.bpmIntervals)));}finally{dispose(result);}
     });
-    if(tonal&&duration>=4)key=measure('Key',()=>keySummary(e.KeyExtractor(vector,true,4096,4096,36,3500,60,25,0.2,'edma',44100,0.0001,440,'cosine','hann')));
+    if(tonal&&estimateKey&&duration>=4)key=measure('Key',()=>keySummary(e.KeyExtractor(vector,true,4096,4096,36,3500,60,25,0.2,'edma',44100,0.0001,440,'cosine','hann')));
     const centroids=[],bass=[];
     for(let offset=0;offset+4096<=normalized.length;offset+=8820) {
       let frame,windowed,spectrum;
@@ -59,10 +59,11 @@ export function extractSection(e,samples,{tonal=false}={}) {
   }finally{dispose(dance);dispose(onsets);vector.delete();}
 }
 
-export function analyzeExcerpts(e,excerpts) {
-  const sections={};for(const name of ['intro','body','outro'])sections[name]=extractSection(e,excerpts[name],{tonal:name==='body'});
+export function analyzeExcerpts(e,excerpts,options={}) {
+  const sections={};for(const name of ['intro','body','outro'])sections[name]=extractSection(e,excerpts[name],{...options,tonal:name==='body'});
   const energies=Object.values(sections).map(s=>s.energy).filter(finite);
   return {energy:sections.body.energy,intro:sections.intro.energy,outro:sections.outro.energy,peak:energies.length?Math.max(...energies):null,
-    evidence:'essentia-excerpt-estimate',audioFeatures:{backend:'essentia',libraryVersion:e.version,sections,rhythm:sections.body.rhythm,tonal:sections.body.tonal},
+    evidence:'essentia-excerpt-estimate',audioFeatures:{backend:'essentia',libraryVersion:e.version,sections,rhythm:sections.body.rhythm,tonal:sections.body.tonal,
+      estimation:{bpm:options.estimateBpm!==false,key:options.estimateKey!==false}},
     featureWarnings:Object.values(sections).flatMap(s=>s.issues)};
 }

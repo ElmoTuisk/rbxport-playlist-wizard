@@ -10,7 +10,7 @@ import {analyzeAudio} from '../src/analysis.mjs';
 import {ExcerptCollector,runEssentiaWorker} from '../src/essentia-analysis.mjs';
 import {ESSENTIA_ANALYZER_VERSION,essentiaStatus,essentiaDirectory,verifyEssentia} from '../src/essentia-runtime.mjs';
 import {keySummary,rhythmSummary,energyFromDescriptors} from '../src/essentia-features.mjs';
-import {applyAnalysis} from '../src/track-features.mjs';
+import {applyAnalysis,estimationOptions,analysisCoversMetadata} from '../src/track-features.mjs';
 import {installEssentia,extractRuntime,essentiaManifest} from '../scripts/Install-Essentia.mjs';
 import {run} from '../src/process.mjs';
 const runtime=await essentiaStatus(),ffmpeg=process.env.FFMPEG||'ffmpeg',hasFFmpeg=spawnSync(ffmpeg,['-version'],{windowsHide:true}).status===0;
@@ -45,6 +45,17 @@ test('Essentia raw strengths are gated, unsupported energy stays unknown and hos
   const weak=applyAnalysis({bpm:null,key:''},{audioFeatures:{rhythm:{bpm:120,confidence:0,regularity:1,acceptedBpm:120},tonal:{key:'Am',strength:0.1,acceptedKey:'Am'}}});assert.equal(weak.bpm,null);assert.equal(weak.key,'');
 });
 
+test('only valid host metadata suppresses estimates and a partial cache cannot fill a later metadata gap',()=>{
+  assert.deepEqual(estimationOptions({bpm:128,key:'8A'}),{estimateBpm:false,estimateKey:false});
+  assert.deepEqual(estimationOptions({bpm:NaN,key:'unknown'}),{estimateBpm:true,estimateKey:true});
+  assert.deepEqual(estimationOptions({bpm:0,key:'Am'}),{estimateBpm:true,estimateKey:false});
+  const partial={audioFeatures:{estimation:{bpm:false,key:false}}};
+  assert.equal(analysisCoversMetadata({bpm:128,key:'Am'},partial),true);
+  assert.equal(analysisCoversMetadata({bpm:null,key:'Am'},partial),false);
+  assert.equal(analysisCoversMetadata({bpm:128,key:''},partial),false);
+  assert.equal(analysisCoversMetadata({bpm:null,key:''},{audioFeatures:{}}),true,'previous complete-estimate cache stays reusable');
+});
+
 test('pinned Essentia setup uses cached verified files, survives update and rejects modified archives',{skip:!archive},async t=>{
   const dir=await temp(t),runtimeDir=join(dir,'runtime'),cached=join(dir,'archive.tgz');await writeFile(cached,archive);
   const forbidden=()=>{throw Error('Fixture forbids network');};
@@ -65,6 +76,15 @@ test('real Essentia worker analyzes synthetic pulse audio, resists gain changes 
   await run(ffmpeg,['-v','error','-i',a,'-af','volume=0.2','-c:a','pcm_f32le',b]);
   const before=sha(await readFile(a)),options={ffmpeg,backend:'essentia',duration:12};
   const loud=await analyzeAudio(a,options),quiet=await analyzeAudio(b,options);
+  const known=await analyzeAudio(a,{...options,estimateBpm:false,estimateKey:false});
+  assert.deepEqual(known.audioFeatures.estimation,{bpm:false,key:false});
+  assert.equal(known.audioFeatures.rhythm,null);assert.equal(known.audioFeatures.tonal,null);
+  for(const name of ['intro','body','outro']) {
+    const {rhythm,tonal,...expected}=loud.audioFeatures.sections[name];
+    const {rhythm:unusedRhythm,tonal:unusedTonal,...actual}=known.audioFeatures.sections[name];
+    assert.deepEqual(actual,expected,'skipping unused estimates must preserve every energy/transition descriptor');
+  }
+  assert.equal(known.energy,loud.energy);assert.deepEqual(known.audioFeatures.sampled,loud.audioFeatures.sampled);
   assert.equal(loud.version,ESSENTIA_ANALYZER_VERSION);assert.equal(loud.evidence,'essentia-excerpt-estimate');assert.equal(sha(await readFile(a)),before);
   assert(Math.abs(loud.energy-quiet.energy)<=0.2);assert(loud.energy>=1&&loud.energy<=10);
   const f=loud.audioFeatures;assert.equal(f.backend,'essentia');assert.equal(f.decodedSeconds,12);assert(Math.abs(f.rhythm.bpm-120)<2);assert(f.rhythm.confidence>1.5);assert(f.rhythm.acceptedBpm);

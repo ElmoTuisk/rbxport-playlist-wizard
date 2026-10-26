@@ -41,6 +41,7 @@ test('independent API requires its own pairing token, rejects cross-origin reque
   assert.equal((await post('generate',{source:{id:'playlists',playlistIds:['demo']},recipe:{mode:'songs',songs:6}})).status,200);
   await app.wizard.task;assert.equal(app.wizard.draft.tracks.length,6);
   assert.equal((await post('create',{id:app.wizard.draft.id,name:'Do not write'})).status,400);
+  assert.equal((await post('cue',{id:app.wizard.draft.id,trackId:app.wizard.draft.tracks[0].id})).status,400);
   assert.equal(app.store.all('wizard-writes').length,0);assert.equal(app.store.all('links').length,0);
 });
 test('unsupported host keeps its independent panel available but blocks generation and creation',async t=>{

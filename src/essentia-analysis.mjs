@@ -42,9 +42,9 @@ async function decodeExcerpts(path,{duration,ffmpeg,signal}) {
   });
   return collector.finish();
 }
-export function runEssentiaWorker(excerpts,{directory,signal,timeout=90000}={}) {
+export function runEssentiaWorker(excerpts,{directory,signal,timeout=90000,estimateBpm=true,estimateKey=true}={}) {
   return new Promise((resolve,reject)=>{
-    signal?.throwIfAborted();const worker=new Worker(new URL('./essentia-worker.mjs',import.meta.url),{workerData:{directory,excerpts},transferList:[...new Set(Object.values(excerpts).map(a=>a.buffer))],execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:256}});
+    signal?.throwIfAborted();const worker=new Worker(new URL('./essentia-worker.mjs',import.meta.url),{workerData:{directory,excerpts,options:{estimateBpm,estimateKey}},transferList:[...new Set(Object.values(excerpts).map(a=>a.buffer))],execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:256}});
     let done=false;const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);const settled=()=>{error?reject(error):resolve(result);};void worker.terminate().then(settled,settled);};
     const abort=()=>finish(Error('Cancelled'));
     const timer=setTimeout(()=>finish(Error('Essentia analysis timed out')),timeout);signal?.addEventListener('abort',abort,{once:true});
@@ -53,11 +53,11 @@ export function runEssentiaWorker(excerpts,{directory,signal,timeout=90000}={}) 
     worker.once('error',()=>finish(Error('Essentia analysis worker failed')));worker.once('exit',()=>{if(!done)finish(Error('Essentia analysis worker stopped without a result'));});
   });
 }
-export async function analyzeEssentiaAudio(path,{ffmpeg='ffmpeg',duration,signal,directory}={}) {
+export async function analyzeEssentiaAudio(path,{ffmpeg='ffmpeg',duration,signal,directory,estimateBpm=true,estimateKey=true}={}) {
   if(!isAbsolute(path)||!/(?:\.mp3|\.wav|\.wave|\.aiff?|\.flac|\.m4a|\.aac|\.ogg|\.opus)$/i.test(path))throw Error('Choose a supported host-resolved local audio file');
   const runtime=await verifyEssentia(directory),before=fileStamp(await stat(path));
   const decoded=await decodeExcerpts(path,{duration,ffmpeg,signal});signal?.throwIfAborted();
-  const result=await runEssentiaWorker(decoded.excerpts,{directory:runtime.directory,signal});signal?.throwIfAborted();
+  const result=await runEssentiaWorker(decoded.excerpts,{directory:runtime.directory,signal,estimateBpm,estimateKey});signal?.throwIfAborted();
   if(!sameStamp(before,fileStamp(await stat(path))))throw Error('Audio changed during analysis');
   return {...result,version:ESSENTIA_ANALYZER_VERSION,stamp:before,audioFeatures:{...result.audioFeatures,decodedSeconds:decoded.duration,sampled:decoded.coverage}};
 }

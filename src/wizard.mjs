@@ -4,12 +4,13 @@ import { generate, prepareDurations } from './optimizer.mjs';
 import { recipeFrom } from './recipe.mjs';
 import { analyzeAudio, ANALYZER_VERSION, cacheKey, fileStamp, sameStamp } from './analysis.mjs';
 import { ESSENTIA_ANALYZER_VERSION,verifyEssentia } from './essentia-runtime.mjs';
-import {applyAnalysis} from './track-features.mjs';
+import {applyAnalysis,estimationOptions,analysisCoversMetadata} from './track-features.mjs';
+import {mapAnalysis,analysisParallelism} from './analysis-queue.mjs';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sequenceEqual=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 export class Wizard {
-  constructor(store,bridge,{changed=()=>{},ffmpeg='ffmpeg',fileStat=stat,analyzer=analyzeAudio}={}) {
-    Object.assign(this,{store,bridge,changed,ffmpeg,fileStat,analyzer});this.sources=new Map();this.active=null;this.task=null;
+  constructor(store,bridge,{changed=()=>{},ffmpeg='ffmpeg',fileStat=stat,analyzer=analyzeAudio,analysisConcurrency}={}) {
+    Object.assign(this,{store,bridge,changed,ffmpeg,fileStat,analyzer,analysisConcurrency});this.sources=new Map();this.active=null;this.task=null;
     this.optionsModel={sources:[]};this.message='Choose music, a length and an energy curve.';
     this.draft=store.get('wizard','draft');
     for(const write of store.all('wizard-writes'))if(['creating','adding'].includes(write.status))store.put('wizard-writes',write.id,{...write,status:write.targetId?'interrupted':'uncertain'});
@@ -19,8 +20,8 @@ export class Wizard {
     const write=draft?.writeId?this.store.get('wizard-writes',draft.writeId):null;
     return {active:this.active,message:this.message,options:this.optionsModel,progress:this.progress,error:this.error||'',
       draft:draft?{id:draft.id,sourceName:draft.sourceName,source:{id:draft.source.id,playlistIds:draft.source.playlistIds},recipe:draft.recipe,coverage:draft.coverage,warnings:draft.warnings,
-        fullSeconds:draft.fullSeconds,mixedSeconds:draft.mixedSeconds,search:draft.search,exclusions:draft.exclusions,
-        tracks:draft.tracks.map(({id,title,artist,duration,bpm,key,bpmEvidence,keyEvidence,energy,energyEvidence,audioFeatures,featureWarnings,start,targetEnergy,transition})=>({id,title,artist,duration,bpm,key,bpmEvidence,keyEvidence,energy,energyEvidence,audioFeatures,featureWarnings,start,targetEnergy,transition})),
+        fullSeconds:draft.fullSeconds,mixedSeconds:draft.mixedSeconds,search:draft.search,exclusions:draft.exclusions,openingWarning:draft.openingWarning,
+        tracks:draft.tracks.map(({id,title,artist,duration,bpm,key,bpmEvidence,keyEvidence,energy,energyEvidence,audioFeatures,featureWarnings,start,targetEnergy,curveSamples,transition})=>({id,title,artist,duration,bpm,key,bpmEvidence,keyEvidence,energy,energyEvidence,audioFeatures,featureWarnings,start,targetEnergy,curveSamples,transition})),
         write:write?{status:write.status,targetId:write.targetId,name:write.name,message:write.message}:null}:null};
   }
   async options() {
@@ -85,12 +86,12 @@ export class Wizard {
   }
   start(kind,args={}) {
     if(this.active)throw Error('Wait for Playlist Wizard or cancel the current operation');
-    if(!['generate','create'].includes(kind))throw Error('Unsupported operation');
+    if(!['generate','create','cue'].includes(kind))throw Error('Unsupported operation');
     // Validate user settings before replacing the current preview.
     if(kind==='generate')recipeFrom(args.recipe);
-    this.active=kind;this.controller=new AbortController();this.error='';this.progress=null;this.message=kind==='generate'?'Preparing a draft…':'Creating playlist…';this.changed();
+    this.active=kind;this.controller=new AbortController();this.error='';this.progress=null;this.message=kind==='generate'?'Preparing a draft…':kind==='cue'?'Loading Player 1, paused…':'Creating playlist…';this.changed();
     this.task=(async()=>{
-      try {if(kind==='generate')await this.generate(args,this.controller.signal);else await this.create(args,this.controller.signal);}
+      try {if(kind==='generate')await this.generate(args,this.controller.signal);else if(kind==='cue')await this.cue(args,this.controller.signal);else await this.create(args,this.controller.signal);}
       catch(error){this.error=this.controller.signal.aborted?'Cancelled. Completed analysis is cached; a partial playlist, if any, is retained.':error.message;this.message=this.error;}
       finally{this.active=null;this.controller=null;this.progress=null;this.changed();}
     })();
@@ -106,18 +107,19 @@ export class Wizard {
     if(recipe.mode==='songs'&&recipe.songs>available.length)throw Error(`Only ${available.length} distinct songs are available. ${warnings.join(' ')}`.trim());
     const namespace=JSON.stringify([source.libraryId,source.device||null]);
     const analyzerVersion=recipe.analysisBackend==='essentia'?ESSENTIA_ANALYZER_VERSION:ANALYZER_VERSION;
-    const tracks=[];
-    for(const [index,track] of available.entries()) {
+    let completed=0;
+    const tracks=await mapAnalysis(available,async(track,index,signal)=>{
       signal.throwIfAborted();
       const key=cacheKey(namespace,track.id),analysisKey=cacheKey(namespace+':'+analyzerVersion,track.id);
       const cached=this.store.get('wizard-analysis',analysisKey)||(recipe.analysisBackend==='basic'?this.store.get('wizard-analysis',key):null);
       let analysis=cached?.version===analyzerVersion&&sameStamp(cached.stamp,track.stamp)?cached:null;
       if(analysis?.audioFeatures?.decodedSeconds&&Math.abs(analysis.audioFeatures.decodedSeconds-track.duration)>Math.max(3,track.duration*0.02))throw Error('Host duration differs from cached decoded audio; refresh the track before generating.');
-      if(recipe.analyze&&!analysis) {
-        this.progress={stage:recipe.analysisBackend==='essentia'?'Analyzing with Essentia':'Analyzing with Basic',completed:index,total:available.length};this.changed();
+      if(recipe.analyze&&(!analysis||!analysisCoversMetadata(track,analysis))) {
+        analysis=null;
+        this.progress={stage:recipe.analysisBackend==='essentia'?'Analyzing with Essentia':'Analyzing with Basic',completed,total:available.length};this.changed();
         await this.bridge.call('identity',{libraryId:source.libraryId,device:source.device});signal.throwIfAborted();
         let analysisFailure;
-        try {analysis=await this.analyzer(track.path,{ffmpeg:this.ffmpeg,signal,backend:recipe.analysisBackend,duration:track.duration});}
+        try {analysis=await this.analyzer(track.path,{ffmpeg:this.ffmpeg,signal,backend:recipe.analysisBackend,duration:track.duration,...estimationOptions(track)});}
         catch(error){signal.throwIfAborted();analysisFailure=error;track.analysisError=error.message;}
         await this.bridge.call('identity',{libraryId:source.libraryId,device:source.device});signal.throwIfAborted();
         if(analysisFailure?.code==='WIZARD_DURATION_CHANGED')throw analysisFailure;
@@ -129,8 +131,10 @@ export class Wizard {
         if(typeof override!=='number'||!Number.isFinite(override)||override<1||override>10)throw Error('Energy overrides must be from 1 to 10');
         this.store.put('wizard-overrides',key,{energy:override,stamp:track.stamp});
       }else{const saved=this.store.get('wizard-overrides',key);if(saved&&sameStamp(saved.stamp,track.stamp))override=saved.energy;}
-      tracks.push(applyAnalysis(track,analysis,override));
-    }
+      completed++;
+      if(recipe.analyze){this.progress={stage:recipe.analysisBackend==='essentia'?'Analyzing with Essentia':'Analyzing with Basic',completed,total:available.length};this.changed();}
+      return applyAnalysis(track,analysis,override);
+    },{signal,concurrency:recipe.analyze&&recipe.analysisBackend==='essentia'?(this.analysisConcurrency??analysisParallelism()):1});
     const result=await generate(tracks,recipe,{signal,onProgress:value=>{this.progress=value;this.changed();}});
     result.exclusions={...exclusions,missing:snapshot.tracks.length-present.length};result.warnings.push(...warnings);
     if(present.length<snapshot.tracks.length)result.warnings.push(`${snapshot.tracks.length-present.length} unavailable files excluded from selection.`);
@@ -178,6 +182,19 @@ export class Wizard {
       if(!sequenceEqual(await readTarget(),journal.ids))throw Error('Final playlist membership/order verification failed');
       save('verified','Exact membership and order verified');this.message=`Created “${journal.name}”: ${journal.ids.length} songs; order verified.`;
     } catch(error) {save(journal.targetId?'interrupted':'uncertain',error.message);throw error;}
+  }
+  async cue(args,signal) {
+    const draft=this.draft;
+    if(!draft||args.id!==draft.id)throw Error('Choose a song from the current draft');
+    const track=draft.tracks.find(t=>t.id===args.trackId);
+    if(!track||!track.path||!track.stamp)throw Error('Choose an available song from the current draft');
+    signal.throwIfAborted();
+    let current;try{current=await this.fileStat(track.path);}catch{throw Error('The song file is unavailable; regenerate the draft');}
+    if(!current.isFile()||!sameStamp(fileStamp(current),track.stamp))throw Error('The song file changed; regenerate the draft');
+    signal.throwIfAborted();
+    const result=await this.bridge.call('cue',{libraryId:draft.source.libraryId,device:draft.source.device,trackId:track.id,path:track.path,duration:track.duration});
+    if(result?.trackId!==track.id||result.deck!=='a'||result.paused!==true)throw Error('Player did not verify the paused song load');
+    this.message=`Loaded “${track.title}” into Player 1, paused at the start.`;
   }
   cancel(){this.controller?.abort();}
   async close(){this.cancel();await this.task;}

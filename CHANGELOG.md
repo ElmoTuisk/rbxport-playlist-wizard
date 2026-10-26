@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 — 2026-10-26
+
+- Add a compact ▶ Load action to each reviewed song. Load the real Player 1 with matching title/waveform and verified paused audio at the start, preserving review expansion and draft edits. Require current library/device identity, unchanged files, exact draft membership and the supported host UI action. Refuse unavailable controls and automatic library analysis; preserve Player 2, playlists, cues and grids.
+- Fit sampled intro, middle and outro energy to their own elapsed set times instead of fitting only the middle. Retain cached descriptors and body scores; manual corrections override automatic section scoring. Add intro/outro chart dots, visible opening-energy review and final-runtime curve mismatch notes. Penalize unknown energy as a full possible mismatch rather than treating it as nearly on target. Preserve hard transition limits, exact lengths, locks and every autosort song.
+- Avoid redundant Essentia BPM/key estimation when valid host metadata already supplies those values. Keep full-file decoding, all energy/transition descriptors, the three excerpt windows and existing confidence thresholds. Mark skipped estimates explicitly and compute missing estimates if host metadata later disappears. Retain existing valid analysis caches and manual corrections.
+- Analyze up to two tracks concurrently, falling back to one on smaller or memory-constrained systems. Keep deterministic results, per-track library/device and file checks, completed-only progress, cancellation of all active work and reusable completed caches. Basic remains serial.
+- Add an offline synthetic benchmark comparing old/new analysis, checking unchanged descriptors and source bytes. Synthetic benchmarking does not establish listening accuracy or real-library performance.
+
 ## 0.1.2 — 2026-10-24
 
 - Ship one self-contained JavaScript setup `.mjs` as the main download, with official Node.js 24 or newer required first. Run `node <setup-file.mjs>` and confirm; the source ZIP need not be unpacked. No custom setup EXE is built on this release path.

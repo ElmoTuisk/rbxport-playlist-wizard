@@ -29,6 +29,44 @@ test('autosort preserves every ID, fits a build and reproduces an identical seed
   assert.deepEqual(a.tracks,b.tracks);assert(a.tracks[0].energy<a.tracks.at(-1).energy);
   assert.equal(a.coverage.energy,8);assert(a.mixedSeconds<a.fullSeconds);
 });
+
+test('Waves fits sampled sections so a quiet middle cannot disguise an intense opening',async()=>{
+  const track=(id,energy,intro,outro)=>({id,duration:210,bpm:140,key:'Am',energy,
+    audioFeatures:{backend:'essentia',sections:{intro:{energy:intro},body:{energy},outro:{energy:outro}}}});
+  // Synthetic descriptors reproduce the reported scores, without real music or IDs.
+  const tracks=[track('intense-a',4.6,9.4,8.5),track('intense-b',5.7,9.2,9.7),
+    ...Array.from({length:30},(_,i)=>track('warm-'+i,6,3.2,4.5))];
+  const result=await generate(tracks,{mode:'songs',songs:30,curve:'waves'});
+  assert.match(result.tracks[0].id,/^warm-/);
+  assert.match(result.tracks[1].id,/^warm-/);
+  assert.equal(result.tracks[0].energy,6,'retain the measured body score');
+  assert.equal(result.tracks[0].curveSamples[0].energy,3.2);
+});
+
+test('unknown energy cannot beat a measured curve fit merely through a small missing-data penalty',async()=>{
+  const result=await generate([{id:'unknown',duration:300,energy:null},{id:'measured',duration:300,energy:5}],
+    {mode:'songs',songs:1,curve:'custom',anchors:[3,3,3,3,3,3]});
+  assert.equal(result.tracks[0].id,'measured');
+});
+
+test('final curve review flags an intense locked opener, preserves autosort, and honors manual corrections',async()=>{
+  const tracks=pool(3);tracks[0]={...tracks[0],energy:4.6,audioFeatures:{sections:{intro:{energy:9.4},body:{energy:4.6},outro:{energy:8.5}},
+    sampled:{intro:{start:0,seconds:30},body:{start:135,seconds:30},outro:{start:270,seconds:30}}}};
+  const recipe={mode:'all',curve:'waves',locks:{0:tracks[0].id}};
+  const result=await generate(tracks,recipe);
+  assert.equal(result.tracks.length,3);assert.equal(result.tracks[0].id,tracks[0].id);
+  assert.match(result.openingWarning,/Opening intro energy 9.4/);
+  assert(result.warnings.some(w=>w.includes('more than 2 energy points')));
+  const samples=result.tracks[0].curveSamples;
+  assert.deepEqual(samples.map(s=>s.seconds),[15,150,285]);
+  assert.equal(samples[0].targetEnergy,targetEnergy(result.recipe,15/result.mixedSeconds));
+  const corrected=await generate([{...tracks[0],energy:3,energyEvidence:'manual'}],{mode:'songs',songs:1,curve:'custom',anchors:[3,3,3,3,3,3]});
+  assert.equal(corrected.openingWarning,'');assert.equal(corrected.tracks[0].curveSamples.length,1);
+  const unknown=await generate([{id:'unknown',duration:300}],{mode:'all'});
+  assert.match(unknown.openingWarning,/Opening energy is unknown/);
+  const partial=await generate([{...tracks[0],audioFeatures:{sections:{intro:{energy:null}}}}],{mode:'all'});
+  assert.match(partial.openingWarning,/Opening energy is unknown/);
+});
 test('song count is exact, fixed positions survive and unavailable counts are explained',async()=>{
   const result=await generate(pool(),{mode:'songs',songs:5,locks:{0:'4',4:'2'}});
   assert.equal(result.tracks.length,5);assert.equal(result.tracks[0].id,'4');assert.equal(result.tracks[4].id,'2');

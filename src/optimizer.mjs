@@ -19,6 +19,26 @@ export function prepareDurations(pool,recipe) {
   return {tracks,exclusions,warnings};
 }
 const hash = value => { let n=2166136261;for (let i=0;i<value.length;i++) n=Math.imul(n^value.charCodeAt(i),16777619);return n>>>0; };
+// Fit measured sections to their own place on the set timeline. A quiet middle
+// must not hide an intense intro/outro. A user's correction remains authoritative.
+function energySamples(track) {
+  const sections=track.energyEvidence==='manual'?null:track.audioFeatures?.sections;
+  const samples=[];
+  for(const section of sections?['intro','body','outro']:['body']) {
+    const energy=section==='body'?track.energy:sections[section]?.energy;
+    if(section!=='body'&&!sections[section])continue;
+    const sampled=track.audioFeatures?.sampled?.[section];
+    const fallback=section==='intro'?Math.min(30,track.duration)/2:section==='outro'?track.duration-Math.min(30,track.duration)/2:track.duration/2;
+    const seconds=known(sampled?.start)&&known(sampled?.seconds)?sampled.start+sampled.seconds/2:fallback;
+    samples.push({section,seconds:Math.max(0,Math.min(track.duration,seconds)),energy:known(energy)?energy:null});
+  }
+  return samples;
+}
+function fitEnergy(samples,recipe,start,total) {
+  return samples.map(sample=>({...sample,targetEnergy:targetEnergy(recipe,(start+sample.seconds)/Math.max(1,total))}));
+}
+// Unknown energy gets the full 1–10 mismatch, rather than appearing near target.
+const energyCost=(samples,recipe,start,total)=>3*samples.reduce((sum,s)=>sum+(known(s.energy)?Math.abs(s.energy-targetEnergy(recipe,(start+s.seconds)/Math.max(1,total))):9),0)/samples.length;
 export function overlapSeconds(a,b,recipe) {
   // Each track can donate at most a quarter of its duration to each neighbor.
   if (!a || !b || !known(a.bpm) || !known(b.bpm) || a.bpm<=0 || b.bpm<=0) return 0;
@@ -64,7 +84,8 @@ export function describeOrder(tracks,recipe) {
     elapsed-=overlap;const start=elapsed;full+=track.duration;elapsed+=track.duration;
     rows.push({...track,start,overlap,transition:transition(tracks[i-1],track,recipe)});
   }
-  const timeline=rows.map(row=>({...row,targetEnergy:targetEnergy(recipe,(row.start+row.duration/2)/Math.max(1,elapsed))}));
+  const timeline=rows.map(row=>({...row,targetEnergy:targetEnergy(recipe,(row.start+row.duration/2)/Math.max(1,elapsed)),
+    curveSamples:fitEnergy(energySamples(row),recipe,row.start,elapsed)}));
   return {tracks:timeline,fullSeconds:full,mixedSeconds:elapsed};
 }
 export function validateOrder(tracks,pool,recipe) {
@@ -107,6 +128,7 @@ export async function generate(pool,input,{signal,onProgress=()=>{}}={}) {
     while(candidates.length<600&&bins.some(b=>b.length))for(const bin of bins)if(bin.length&&candidates.length<600)candidates.push(bin.pop());
   }
   const byId=new Map(candidates.map(t=>[t.id,t]));
+  const samplesById=new Map(candidates.map(t=>[t.id,energySamples(t)]));
   let beam=[{order:[],used:new Set(),cost:0,seconds:0}],complete=[],expansions=0;
   const deadline=Date.now()+15000;
   const durationScore=state=>state.cost/Math.max(1,state.order.length)+Math.abs(state.seconds-target)/Math.max(1,tolerance)*3;
@@ -122,8 +144,7 @@ export async function generate(pool,input,{signal,onProgress=()=>{}}={}) {
         if(!track||state.used.has(track.id)||(!fixed&&lockedIds.has(track.id)))continue;
         const edge=transition(last,track,recipe);if(!edge.allowed)continue;
         const overlap=overlapSeconds(last,track,recipe),seconds=state.seconds+track.duration-overlap;
-        const fraction=(state.seconds-overlap+track.duration/2)/Math.max(track.duration,expectedDuration);
-        const energy=known(track.energy)?Math.abs(track.energy-targetEnergy(recipe,fraction))*3:2;
+        const energy=energyCost(samplesById.get(track.id),recipe,state.seconds-overlap,Math.max(track.duration,expectedDuration));
         const tie=hash(recipe.seed+':'+position+':'+track.id)/4294967296*0.02;
         ranked.push({track,seconds,cost:state.cost+edge.cost+energy+tie});expansions++;
       }
@@ -149,10 +170,17 @@ export async function generate(pool,input,{signal,onProgress=()=>{}}={}) {
   const result=describeOrder(complete[0].order,recipe);validateOrder(result.tracks,pool,recipe);
   const coverage={energy:result.tracks.filter(t=>known(t.energy)).length,bpm:result.tracks.filter(t=>t.bpm).length,key:result.tracks.filter(t=>musicalKey(t.key)).length};
   const warnings=[...eligibility.warnings];
+  // Review against the final runtime, rather than only the search's estimated one.
+  const opening=result.tracks[0].curveSamples.filter(s=>s.section!=='outro');
+  const excessive=opening.filter(s=>known(s.energy)&&s.energy-s.targetEnergy>2).sort((a,b)=>(b.energy-b.targetEnergy)-(a.energy-a.targetEnergy))[0];
+  const openingWarning=excessive?`Opening ${excessive.section} energy ${excessive.energy.toFixed(1)} exceeds the requested ${excessive.targetEnergy.toFixed(1)}. Review this opener before creating the playlist.`:
+    opening.some(s=>!known(s.energy))?'Opening energy is unknown. Analyze audio or add an energy correction before relying on this opening.':'';
+  const mismatches=result.tracks.filter(t=>t.curveSamples.some(s=>known(s.energy)&&Math.abs(s.energy-s.targetEnergy)>2)).length;
+  if(mismatches)warnings.push(`${mismatches} songs have an estimated section more than 2 energy points from the requested curve. Review the sampled curve and audition the draft; transition limits and locks can prevent a closer fit.`);
   if(coverage.energy<result.tracks.length)warnings.push('Energy is unknown for some tracks. Analyze audio or add local energy overrides to fit the curve.');
   if(coverage.bpm<result.tracks.length)warnings.push('Unknown BPM: tempo limits and overlap duration cannot be verified for every transition.');
   if(coverage.key<result.tracks.length)warnings.push('Some keys are unknown. Harmonic fit is unverified for those transitions.');
   warnings.push('Energy scoring is experimental; audition transitions before a performance.');
-  return {...result,recipe,coverage,warnings,exclusions:eligibility.exclusions,search:{pool:pool.length,shortlist:candidates.length,expansions}};
+  return {...result,recipe,coverage,warnings,openingWarning,exclusions:eligibility.exclusions,search:{pool:pool.length,shortlist:candidates.length,expansions}};
 }
 function secondsCanContinue(seconds,target,tolerance){return seconds<target+tolerance;}

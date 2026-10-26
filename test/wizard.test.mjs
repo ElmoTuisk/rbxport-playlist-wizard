@@ -4,6 +4,7 @@ import { Store } from '../src/store.mjs';
 import { Wizard } from '../src/wizard.mjs';
 import { ESSENTIA_ANALYZER_VERSION as ANALYZER_VERSION } from '../src/essentia-runtime.mjs';
 import {ANALYZER_VERSION as BASIC_VERSION} from '../src/analysis.mjs';
+import {setTimeout as delay} from 'node:timers/promises';
 function fixture(count=8) {
   const store=new Store(':memory:'),calls=[];
   let libraryId='fixture',volumeId='usb',failAdd=false,uncertainCreate=false,scramble=false;
@@ -13,6 +14,7 @@ function fixture(count=8) {
     if(args.libraryId&&args.libraryId!==libraryId)throw Error('Wrong library');
     if(args.device&&args.device.volumeId!==volumeId)throw Error('USB identity changed');
     if(method==='identity')return {libraryId};
+    if(method==='cue')return {trackId:args.trackId,deck:'a',paused:true};
     if(method==='info')return {libraryId,playlists:[{id:'source',name:'Selected crate'}]};
     if(method==='devices')return [{volumeId,path:'/fixture-usb',name:'Fixture USB',libraries:[{format:'oneLibrary',nodes:[{id:'source',name:'USB crate',folder:false}]}]}];
     if(method==='open'){const ids=args.playlistId?playlists.get(args.playlistId):[...tracks.keys()];if(!ids)throw Error('Playlist missing');return {libraryId,viewId:args.playlistId||'all',len:ids.length,gen:1};}
@@ -28,6 +30,35 @@ function fixture(count=8) {
 }
 async function draft(f,extra={}){f.wizard.start('generate',{source:{id:'playlists',playlistIds:['source']},recipe:{mode:'all',...extra}});await f.wizard.task;assert.equal(f.wizard.error,'');return f.wizard.draft;}
 
+test('review cue accepts only current unchanged draft files and leaves saved draft, overrides and playlists untouched',async t=>{
+  const f=fixture();t.after(()=>f.store.close());const d=await draft(f);
+  const saved=JSON.stringify(f.store.all('wizard')),playlists=JSON.stringify([...f.playlists]);
+  f.wizard.start('cue',{id:d.id,trackId:d.tracks[0].id,path:'C:/untrusted-client-path.mp3'});await f.wizard.task;
+  assert.equal(f.wizard.error,'');assert.match(f.wizard.message,/Player 1, paused/);
+  const cue=f.calls.find(c=>c.method==='cue');assert.equal(cue.args.path,d.tracks[0].path);assert.equal(cue.args.libraryId,'fixture');
+  assert.equal(JSON.stringify(f.store.all('wizard')),saved);assert.equal(JSON.stringify([...f.playlists]),playlists);
+  for(const args of [{id:'stale',trackId:d.tracks[0].id},{id:d.id,trackId:'not-in-draft'}]){f.wizard.start('cue',args);await f.wizard.task;assert(f.wizard.error);}
+  f.stamp.mtimeMs++;f.wizard.start('cue',{id:d.id,trackId:d.tracks[0].id});await f.wizard.task;assert.match(f.wizard.error,/file changed/);
+  assert.equal(f.calls.filter(c=>c.method==='cue').length,1);
+  assert(!f.calls.some(c=>['create','add','analyse'].includes(c.method)));
+});
+
+test('cached section scores drive curve review and public preview without another decode or host write',async t=>{
+  const f=fixture(3);t.after(()=>f.store.close());let analyses=0;
+  f.wizard.analyzer=async()=>{analyses++;return {...await f.options.analyzer(),energy:4.6,evidence:'essentia-excerpt-estimate',
+    audioFeatures:{backend:'essentia',sections:{intro:{energy:9.4},body:{energy:4.6},outro:{energy:8.5}}}};};
+  const settings={curve:'custom',anchors:[3,3,3,3,3,3]};
+  await draft(f,{...settings,analyze:true});assert.equal(analyses,3);
+  await draft(f,{...settings,analyze:false});assert.equal(analyses,3);
+  const state=f.wizard.publicState();
+  assert.match(state.draft.openingWarning,/Opening intro energy 9.4/);
+  assert.equal(state.draft.tracks[0].curveSamples.length,3);
+  assert.equal(state.draft.tracks[0].energy,4.6);
+  assert(!JSON.stringify(state).includes('/fixture/'));
+  assert(!f.calls.some(c=>['create','add','analyse'].includes(c.method)));
+  assert(f.store.all('wizard-analysis').every(a=>a.energy===4.6));
+});
+
 test('analysis caches are isolated by backend/version while manual corrections remain reusable',async t=>{
   const f=fixture();t.after(()=>f.store.close());const calls=[];
   f.wizard.analyzer=async(path,options)=>{calls.push(options.backend);return {...await f.options.analyzer(),version:options.backend==='basic'?BASIC_VERSION:ANALYZER_VERSION};};
@@ -36,6 +67,71 @@ test('analysis caches are isolated by backend/version while manual corrections r
   assert.equal(calls.filter(x=>x==='essentia').length,8);assert.equal(calls.filter(x=>x==='basic').length,8);
   assert.equal(f.wizard.draft.tracks.find(t=>t.id==='0').energy,9);
   f.stamp.mtimeMs=2;await draft(f,{analyze:true});assert.equal(calls.filter(x=>x==='essentia').length,16);
+});
+
+test('host-aware analysis retains cache and manual energy, then estimates metadata removed from the host',async t=>{
+  const f=fixture(4);t.after(()=>f.store.close());const calls=[];
+  f.wizard.analysisConcurrency=2;
+  f.wizard.analyzer=async(path,options)=>{
+    calls.push({path,estimateBpm:options.estimateBpm,estimateKey:options.estimateKey});
+    return {...await f.options.analyzer(),audioFeatures:{backend:'essentia',decodedSeconds:300,estimation:{bpm:options.estimateBpm,key:options.estimateKey},
+      rhythm:options.estimateBpm?{bpm:128,confidence:3,regularity:0.95}:null,tonal:options.estimateKey?{key:'Am',strength:0.8}:null}};
+  };
+  f.wizard.start('generate',{source:{id:'playlists',playlistIds:['source']},recipe:{mode:'all',analyze:true},overrides:{0:9}});await f.wizard.task;assert.equal(f.wizard.error,'');
+  assert.equal(calls.length,4);assert(calls.every(c=>!c.estimateBpm&&!c.estimateKey));
+  await draft(f,{analyze:true});assert.equal(calls.length,4);
+  f.tracks.get('0').bpm=null;f.tracks.get('0').key='';
+  const d=await draft(f,{analyze:true});assert.equal(calls.length,5);assert(calls.at(-1).estimateBpm&&calls.at(-1).estimateKey);
+  const track=d.tracks.find(t=>t.id==='0');assert.equal(track.energy,9);assert.equal(track.bpmEvidence,'Essentia excerpt estimate');assert.equal(track.keyEvidence,'Essentia excerpt estimate');
+  await draft(f,{analyze:true});assert.equal(calls.length,5);
+});
+
+test('parallel generation caches completed tracks, cancels all active work and reports only finished progress',async t=>{
+  const f=fixture(5);t.after(()=>f.store.close());f.wizard.analysisConcurrency=2;
+  const seen=[],progress=[];let active=0,max=0;
+  f.wizard.changed=()=>{if(f.wizard.progress?.stage==='Analyzing with Essentia')progress.push(f.wizard.progress.completed);};
+  f.wizard.analyzer=async(path,{signal})=>{
+    seen.push(path);max=Math.max(max,++active);
+    try {
+      if(path.endsWith('/0.mp3')){await delay(5);return f.options.analyzer();}
+      if(path.endsWith('/2.mp3'))queueMicrotask(()=>f.wizard.cancel());
+      await delay(1000,null,{signal});return f.options.analyzer();
+    }finally{active--;}
+  };
+  f.wizard.start('generate',{source:{id:'playlists',playlistIds:['source']},recipe:{mode:'all',analyze:true}});await f.wizard.task;
+  assert.match(f.wizard.error,/Cancelled/);assert.equal(active,0);assert.equal(max,2);assert.equal(seen.length,3);
+  assert.equal(f.store.all('wizard-analysis').length,1);assert.equal(f.wizard.draft,null);
+  assert.equal(Math.max(...progress),1);assert.deepEqual(progress,[...progress].sort((a,b)=>a-b));
+  let retried=0;f.wizard.analyzer=async()=>{retried++;return f.options.analyzer();};await draft(f,{analyze:true});assert.equal(retried,4);
+  assert(!f.calls.some(c=>['create','add','analyse'].includes(c.method)));
+});
+
+test('a fatal duration failure cancels the other analysis and refuses all late cache writes',async t=>{
+  const f=fixture(4);t.after(()=>f.store.close());f.wizard.analysisConcurrency=2;let started=0,cleaned=0;
+  f.wizard.analyzer=async(path,{signal})=>{
+    started++;
+    try {
+      if(path.endsWith('/0.mp3')){await delay(5);throw Object.assign(Error('Duration changed'),{code:'WIZARD_DURATION_CHANGED'});}
+      await delay(1000,null,{signal});return f.options.analyzer();
+    }finally{cleaned++;}
+  };
+  f.wizard.start('generate',{source:{id:'playlists',playlistIds:['source']},recipe:{mode:'all',analyze:true}});await f.wizard.task;
+  assert.match(f.wizard.error,/Duration changed/);assert.equal(started,2);assert.equal(cleaned,2);assert.equal(f.store.all('wizard-analysis').length,0);
+});
+
+test('out-of-order parallel analysis produces the same draft as serial analysis',async t=>{
+  const serial=fixture(),parallel=fixture();t.after(()=>{serial.store.close();parallel.store.close();});
+  for(const [f,concurrency] of [[serial,1],[parallel,2]]) {
+    f.wizard.analysisConcurrency=concurrency;
+    f.wizard.analyzer=async path=>{
+      const id=Number(path.match(/\/(\d+)\.mp3$/)[1]);await delay(id%2?1:5);
+      return {...await f.options.analyzer(),energy:id+1};
+    };
+  }
+  const a=await draft(serial,{analyze:true}),b=await draft(parallel,{analyze:true});
+  assert.deepEqual(b.tracks.map(t=>[t.id,t.energy]),a.tracks.map(t=>[t.id,t.energy]));
+  assert.deepEqual(b.coverage,a.coverage);assert.deepEqual(b.warnings,a.warnings);
+  assert.equal(parallel.calls.filter(c=>c.method==='identity').length,16,'every track retains its before/after identity checks');
 });
 
 test('Essentia fills only missing BPM/key, keeps host values and exposes evidence without rewriting source metadata',async t=>{

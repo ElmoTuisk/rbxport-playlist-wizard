@@ -1,5 +1,12 @@
 import {musicalKey} from './recipe.mjs';
 const known=x=>typeof x==='number'&&Number.isFinite(x);
+// Host metadata wins in the draft, so only compute estimates that can fill gaps.
+export const estimationOptions=track=>({estimateBpm:!(known(track.bpm)&&track.bpm>0),estimateKey:!musicalKey(track.key)});
+export function analysisCoversMetadata(track,analysis) {
+  const needs=estimationOptions(track),computed=analysis?.audioFeatures?.estimation;
+  // Older entries attempted both estimates. Keep these useful caches intact.
+  return (!needs.estimateBpm||computed?.bpm!==false)&&(!needs.estimateKey||computed?.key!==false);
+}
 export function applyAnalysis(track,analysis,override) {
   const f=analysis?.audioFeatures,rhythm=f?.rhythm,tonal=f?.tonal;
   const hostBpm=known(track.bpm)&&track.bpm>0?track.bpm:null,hostKey=musicalKey(track.key)?track.key:'';

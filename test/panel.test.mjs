@@ -32,6 +32,17 @@ test('draft preview shows excluded duration counts without opening transition no
   assert(f.root.innerHTML.indexOf('Excluded from selection:')<f.root.innerHTML.indexOf('Analysis and transition notes'));
 });
 
+test('sampled section dots and an opening warning remain visible outside collapsed notes',async()=>{
+  const f=fixture(),draft=await generate([{id:'a',title:'Fixture <opener>',duration:300,energy:4.6,
+    audioFeatures:{sections:{intro:{energy:9.4},body:{energy:4.6},outro:{energy:8.5}}}}],
+    {mode:'songs',songs:1,curve:'custom',anchors:[3,3,3,3,3,3]});
+  f.controller.update({...f.initial,wizard:{...f.initial.wizard,draft:{...draft,id:'sections',sourceName:'Fixture'}}});
+  assert.match(f.root.innerHTML,/Dots: sampled intro\/outro/);
+  assert.match(f.root.innerHTML,/<title>Fixture &lt;opener&gt; · intro 9.4<\/title>/);
+  assert.equal((f.root.innerHTML.match(/<circle /g)||[]).length,2);
+  assert(f.root.innerHTML.indexOf('Opening intro energy 9.4')<f.root.innerHTML.indexOf('Analysis and transition notes'));
+});
+
 test('managed uninstall has a separate confirmation, works disconnected and blocks active work',async()=>{
   const f=fixture();
   const click=action=>f.events.click({target:{closest:()=>({dataset:{action}})}});
@@ -47,4 +58,20 @@ test('managed uninstall has a separate confirmation, works disconnected and bloc
   f.controller.update({...f.initial,connected:false,installation:{canUninstall:true}});
   await click('review-uninstall');await click('confirm-uninstall');
   assert.equal(f.calls.length,1);assert.equal(f.calls[0].action,'uninstall');assert.equal(f.calls[0].args.confirmed,true);
+});
+
+test('review Load button requests a paused host cue without dirtying the draft or collapsing the review',async()=>{
+  const f=fixture(),draft=await generate([{id:'a',title:'Fixture <song>',duration:300}],{mode:'songs',songs:1});
+  const model={...f.initial,wizard:{...f.initial.wizard,draft:{...draft,id:'current',sourceName:'Fixture'}}};
+  f.controller.update(model);
+  assert.match(f.root.innerHTML,/Load Fixture &lt;song&gt; into Player 1, paused/);
+  f.events.toggle({target:{dataset:{review:''},open:true}});
+  await f.events.click({target:{closest:()=>({dataset:{action:'cue',trackId:'a'}})}});
+  assert.equal(f.calls[0].action,'cue');assert.equal(f.calls[0].args.id,'current');assert.equal(f.calls[0].args.trackId,'a');
+  assert.match(f.root.innerHTML,/data-review open/);
+  assert.match(f.root.innerHTML,/data-settings-changed hidden/);
+  f.controller.update({...model,demo:true});
+  await f.events.click({target:{closest:()=>({dataset:{action:'cue',trackId:'a'}})}});assert.equal(f.calls.length,1);
+  f.controller.update({...model,wizard:{...model.wizard,active:'cue'}});
+  assert.match(f.root.innerHTML,/Loading Player 1, paused/);assert.doesNotMatch(f.root.innerHTML,/data-action="cancel"/);
 });
